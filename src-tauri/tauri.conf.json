@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "SimuBudget",
-  "version": "1.9.0",
+  "version": "2.0.0",
   "identifier": "fr.simubudget.app",
   "build": {
     "frontendDist": "../dist",
@@ -30,6 +30,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis", "msi"],
     "publisher": "KREMER Régis",
     "copyright": "Copyright © 2026 KREMER Régis. Tous droits réservés.",
@@ -69,7 +70,7 @@
       "open": true
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5bDVvTG5UR2R0djN1SlBnVzVKSEY1MEwxbUVqeTVBMU9hWWNrNjhtUjZlNEFBQkFBQUFBQUFBQUFBQUlBQUFBQWxsWmFHY2lEUEtZVWM2YXlxM2tzbjNyVEJXZG5YeGJLWTkrN1l6YlI5SHUxSGhtc1UvOXV0RVRDMndwMTRMaFp4SzVJU2dtY0daSW0zSTIyWDA5OEJMVUJ2QmtwcVB5ZU1YeG1ONFp4WWxmSHZvZXc2SmVTNmtZMGJiRTNpN1dwaVY1TEFyZjY5bUU9Cg==",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU2QzA2QkYyNDA5OEE5NkUKUldSdXFaaEE4bXZBNW40V2Z4b2svRC8xaGRITlZjRDlMZjh2cUVZclZ4MmNXRGNxZ05HQUVBblMK",
       "endpoints": ["https://github.com/Baithz/simubudget/releases/latest/download/latest.json"],
       "dialog": false,
       "windows": {

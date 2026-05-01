@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-05-01 | KREMER Régis | Création — plugin tauri-plugin-updater v2
+//   2026-05-01 | KREMER Régis | Phase 13C — diagnostic fiable erreurs updater
 // =============================================================================
 
 import { useState, useCallback, useEffect, useRef } from "react";
@@ -67,13 +68,17 @@ export function useUpdater(checkOnMount = false): UseUpdaterReturn {
       setStatus("available");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      // En mode dev (sans clé de signature), on ignore silencieusement
-      if (message.includes("No updates available") || message.includes("updater")) {
+      const lower = message.toLowerCase();
+
+      // Ne jamais masquer les erreurs de permission / signature / réseau :
+      // ce sont précisément les causes qui empêchent l'auto-update en production.
+      if (lower.includes("no updates available")) {
         setStatus("up-to-date");
-      } else {
-        setError(message);
-        setStatus("error");
+        return;
       }
+
+      setError(message);
+      setStatus("error");
     }
   }, []);
 

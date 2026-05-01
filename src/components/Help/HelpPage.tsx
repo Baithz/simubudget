@@ -5,6 +5,7 @@
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-05-01 | KREMER Régis | ZIP 7 — création de la page d'aide utilisateur
+//   2026-05-01 | KREMER Régis | Phase 13B — ajout aide méthode des enveloppes
 // =============================================================================
 
 import { motion } from "framer-motion";
@@ -55,6 +56,19 @@ const HELP_SECTIONS: HelpSection[] = [
       "Clôturez le mois quand tout est vérifié pour figer l’historique.",
     ],
     tip: "Le bouton Valider confirme une dépense. Il ne supprime rien et ne clôture pas le mois.",
+  },
+  {
+    title: "Utiliser la méthode des enveloppes",
+    lead: "Les enveloppes servent à encadrer les dépenses variables du mois. Elles ne remplacent pas le budget classique : elles le rendent plus lisible au quotidien.",
+    steps: [
+      "Commencez par vérifier vos revenus et vos charges fixes dans Mes Comptes.",
+      "Laissez sur le compte les prélèvements obligatoires : loyer, crédits, assurances, énergie, téléphone et internet.",
+      "Utilisez les enveloppes pour les postes qui varient : alimentation, transport, loisirs, restaurant, santé, habillement, cadeaux, vacances ou imprévus.",
+      "Pour chaque enveloppe, lisez trois chiffres : prévu, dépensé et restant.",
+      "Une enveloppe verte est maîtrisée, orange signifie qu’il faut ralentir, rouge signifie que le budget prévu est dépassé.",
+      "Après deux ou trois mois, réajustez les montants : l’objectif est d’être réaliste, pas de se piéger avec des montants impossibles.",
+    ],
+    tip: "Exemple : si vous prévoyez 500 € pour l’alimentation et que 380 € sont déjà dépensés, il reste 120 € jusqu’à la fin du mois. Si vous dépassez, SimuBudget le signale et vous pouvez compenser avec une autre enveloppe ou corriger le montant prévu le mois suivant.",
   },
   {
     title: "Suivre les crédits",

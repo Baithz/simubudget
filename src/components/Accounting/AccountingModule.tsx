@@ -17,6 +17,8 @@
 //   2026-05-01 | KREMER Régis | ZIP 5 — affichage scoring avant/après et contexte profil
 //   2026-05-01 | KREMER Régis | ZIP 6 — onglet Analyse données avancées
 //   2026-05-01 | KREMER Régis | Patch 8.1 — stabilité onglets Mes Comptes
+//   2026-05-01 | KREMER Régis | Phase 13 — onglet enveloppes budgétaires
+//   2026-05-01 | KREMER Régis | Phase 13B — pédagogie et aide UX méthode enveloppes
 // =============================================================================
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -29,7 +31,7 @@ import {
   CATEGORY_LABELS, CATEGORY_COLORS, CATEGORY_ORDER, INCOME_LABELS,
   type ExpenseCategory, type IncomeType, type Frequency, type ExpenseOwner,
   type AccountingRecommendation, type MonthlyExpenseLine, type MonthlyBudget,
-  type ExpenseLine,
+  type ExpenseLine, type EnvelopeStatus,
 } from "@/types/accounting";
 import { formatEur } from "@/utils/formatCurrency";
 import type { CreditType } from "@/types/profile";
@@ -99,6 +101,7 @@ export function AccountingModule() {
 
   const tabs = useMemo(() => [
     "Bilan",
+    "Enveloppes",
     "Revenus",
     "Dépenses",
     "Optimisation",
@@ -108,9 +111,9 @@ export function AccountingModule() {
     "Analyse",
   ], [isCouple]);
 
-  const objectifsIndex = isCouple ? 5 : 4;
-  const historiqueIndex = isCouple ? 6 : 5;
-  const analyseIndex = isCouple ? 7 : 6;
+  const objectifsIndex = isCouple ? 6 : 5;
+  const historiqueIndex = isCouple ? 7 : 6;
+  const analyseIndex = isCouple ? 8 : 7;
 
   useEffect(() => {
     if (tab > tabs.length - 1) {
@@ -148,10 +151,11 @@ export function AccountingModule() {
           transition={{ duration: 0.18 }}
         >
           {tab === 0 && <BilanTab store={store} budget={budget} recs={recs} />}
-          {tab === 1 && <RevenusTab store={store} isCouple={isCouple} personName={personName} partnerName={partnerName} />}
-          {tab === 2 && <DépensesTab store={store} isCouple={isCouple} personName={personName} partnerName={partnerName} />}
-          {tab === 3 && <OptimisationTab recs={recs} />}
-          {isCouple && tab === 4 && <CoupleView />}
+          {tab === 1 && <EnvelopeTab store={store} />}
+          {tab === 2 && <RevenusTab store={store} isCouple={isCouple} personName={personName} partnerName={partnerName} />}
+          {tab === 3 && <DépensesTab store={store} isCouple={isCouple} personName={personName} partnerName={partnerName} />}
+          {tab === 4 && <OptimisationTab recs={recs} />}
+          {isCouple && tab === 5 && <CoupleView />}
           {tab === objectifsIndex && <GoalsPanel />}
           {tab === historiqueIndex && <HistoryPanel />}
           {tab === analyseIndex && <DataInsightsPanel />}
@@ -263,6 +267,227 @@ function BilanTab({ store, budget, recs }: {
   );
 }
 
+
+function EnvelopeTab({ store }: { store: ReturnType<typeof useAccountingStore.getState> }) {
+  const settings = store.envelopeSettings;
+  const [showGuide, setShowGuide] = useState(false);
+  const statuses = store.getEnvelopeStatuses();
+  const [fromCategory, setFromCategory] = useState<ExpenseCategory>("food");
+  const [toCategory, setToCategory] = useState<ExpenseCategory>("savings");
+  const [transferAmount, setTransferAmount] = useState(0);
+  const totalPlanned = statuses.reduce((sum, status) => sum + status.planned, 0);
+  const totalSpent = statuses.reduce((sum, status) => sum + status.spent, 0);
+  const totalRemaining = totalPlanned - totalSpent;
+  const periodLabel = settings.period === "weekly" ? "semaine" : "mois";
+  const positiveStatuses = statuses.filter((status) => status.remaining > 0 && !status.isSavingsEnvelope);
+  const hasStatuses = statuses.length > 0;
+
+  function quickSaveRemainder(): void {
+    const amount = Math.round(positiveStatuses.reduce((sum, status) => sum + status.remaining, 0) * 100) / 100;
+    if (amount <= 0) return;
+    store.addMonthlyExpense({
+      month: store.activeMonth,
+      label: "Reste des enveloppes vers épargne",
+      category: "savings",
+      amount,
+      plannedAmount: amount,
+      realAmount: amount,
+      isFixed: false,
+      isMandatory: false,
+      owner: "shared",
+      status: "added",
+      notes: "envelope:remaining-to-savings",
+    });
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="card rounded-2xl border [border-color:var(--border)] p-5 shadow-card overflow-hidden relative">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-start via-brand-mid to-brand-end" />
+        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-widest font-bold text-ink-muted">Méthode des enveloppes</p>
+            <h2 className="text-xl font-bold text-ink-primary mt-1">Piloter les dépenses variables sans doublon</h2>
+            <p className="text-sm text-ink-secondary mt-2 max-w-3xl">
+              La méthode des enveloppes sert à piloter les dépenses variables avant qu’elles ne dérapent. SimuBudget transforme vos catégories du mois en enveloppes : vous voyez le montant prévu, ce qui est déjà dépensé et ce qu’il reste.
+            </p>
+            <p className="text-xs font-semibold text-ink-muted mt-2 max-w-3xl">
+              À garder sur le compte : loyer, crédits, assurances, énergie et abonnements prélevés. À suivre en enveloppes : alimentation, carburant, loisirs, restaurant, santé, habillement, cadeaux, vacances et imprévus.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={clsx("btn-secondary", settings.enabled && "ring-2 ring-[var(--brand-glow)]")}
+              onClick={() => store.setEnvelopeMode(!settings.enabled)}
+            >
+              {settings.enabled ? "Mode actif" : "Activer"}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setShowGuide((value) => !value)}
+            >
+              Comment ça marche ?
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => store.setEnvelopeMode(settings.enabled, settings.period === "monthly" ? "weekly" : "monthly")}
+            >
+              Vue {settings.period === "monthly" ? "mensuelle" : "hebdomadaire"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showGuide && <EnvelopeGuide />}
+
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+        <MetricCard label={`Budget enveloppes / ${periodLabel}`} value={formatEur(totalPlanned)} sub="Total prévu sur les catégories variables" />
+        <MetricCard label={`Dépensé / ${periodLabel}`} value={formatEur(totalSpent)} tone={totalSpent <= totalPlanned ? "green" : "amber"} sub="Somme des dépenses suivies" />
+        <MetricCard label="Reste disponible" value={`${totalRemaining >= 0 ? "+" : ""}${formatEur(totalRemaining)}`} tone={totalRemaining >= 0 ? "green" : "red"} sub="À conserver ou transférer vers épargne" />
+        <MetricCard label="Enveloppes surveillées" value={String(statuses.filter((status) => status.health === "watch" || status.health === "danger").length)} tone="amber" sub="Dépassement ou seuil proche" />
+      </div>
+
+      {!settings.enabled && (
+        <div className="rounded-2xl p-4 text-sm font-semibold" style={{ background: "var(--fin-amber-bg)", color: "var(--fin-amber)", border: "1px solid var(--fin-amber-border)" }}>
+          Le mode enveloppes est désactivé. Les calculs restent disponibles, mais aucune recommandation spécifique enveloppe ne sera priorisée.
+        </div>
+      )}
+
+      {!hasStatuses ? (
+        <EmptyState label="Aucune enveloppe à afficher" sub="Ajoutez ou validez des dépenses variables pour créer automatiquement vos enveloppes." />
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {statuses.map((status) => <EnvelopeCard key={status.category} status={status} />)}
+        </div>
+      )}
+
+      <div className="card rounded-2xl border [border-color:var(--border)] p-5 shadow-card space-y-4">
+        <div>
+          <p className="text-sm font-bold text-ink-primary">Rééquilibrer les enveloppes</p>
+          <p className="text-xs text-ink-secondary mt-1">
+            Utilisez ce bloc uniquement pour déplacer un reste prévu d'une enveloppe vers une autre. Cela crée deux lignes de rééquilibrage traçables dans le mois actif.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <SelectInput label="Depuis" value={fromCategory} options={CATEGORY_ORDER.map((cat) => ({ value: cat, label: CATEGORY_LABELS[cat] }))} onChange={(value) => setFromCategory(value as ExpenseCategory)} />
+          <SelectInput label="Vers" value={toCategory} options={CATEGORY_ORDER.map((cat) => ({ value: cat, label: CATEGORY_LABELS[cat] }))} onChange={(value) => setToCategory(value as ExpenseCategory)} />
+          <NumberInput label="Montant (€)" value={transferAmount} onChange={setTransferAmount} />
+          <div className="flex items-end">
+            <button type="button" className="btn-brand w-full" onClick={() => store.redistributeEnvelopeRemaining(fromCategory, toCategory, transferAmount)}>
+              Rééquilibrer
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn-secondary" onClick={quickSaveRemainder}>
+            Transférer les restes vers l'épargne
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EnvelopeGuide() {
+  const steps = [
+    {
+      title: "1. Je pars de mon budget réel",
+      text: "SimuBudget utilise vos revenus, vos charges fixes et vos dépenses prévues pour connaître votre reste à vivre.",
+    },
+    {
+      title: "2. Je ne mets pas tout en enveloppes",
+      text: "Les charges fixes restent dans le budget classique : loyer, crédits, assurances, téléphone, internet, énergie. Elles doivent rester disponibles sur le compte.",
+    },
+    {
+      title: "3. Je crée mes limites de dépenses variables",
+      text: "Chaque catégorie variable devient une enveloppe : alimentation, transport, loisirs, santé, habillement, restaurants, cadeaux, vacances ou imprévus.",
+    },
+    {
+      title: "4. Je suis le mois en temps réel",
+      text: "Prévu correspond au montant autorisé. Dépensé correspond au réel saisi ou validé. Restant indique ce que vous pouvez encore utiliser.",
+    },
+    {
+      title: "5. Je redistribue seulement si nécessaire",
+      text: "S’il reste 30 € en loisirs mais qu’il manque 30 € en carburant, le rééquilibrage crée une trace au lieu de modifier les chiffres en silence.",
+    },
+    {
+      title: "6. Je réajuste après 2 ou 3 mois",
+      text: "Une enveloppe rouge tous les mois n’est pas un échec : c’est le signal qu’il faut revoir le montant prévu ou l’habitude de dépense.",
+    },
+  ];
+
+  return (
+    <div className="card rounded-2xl border [border-color:var(--border)] p-5 shadow-card">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-widest font-bold text-ink-muted">Guide rapide</p>
+          <h3 className="text-lg font-extrabold text-ink-primary mt-1">Comprendre les enveloppes dans SimuBudget</h3>
+          <p className="text-sm text-ink-secondary mt-2 max-w-3xl">
+            Ici, il n’est pas obligatoire de retirer des espèces. L’idée est la même : réserver une somme maximale par poste variable, suivre ce qui sort, puis garder ou réaffecter ce qui reste.
+          </p>
+        </div>
+        <div className="rounded-2xl px-4 py-3 text-sm font-bold" style={{ background: "var(--fin-blue-bg)", color: "var(--fin-blue)", border: "1px solid var(--fin-blue-border)" }}>
+          Vert = maîtrisé · Orange = proche limite · Rouge = dépassé
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {steps.map((step) => (
+          <div key={step.title} className="rounded-2xl p-4" style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}>
+            <p className="text-sm font-extrabold text-ink-primary">{step.title}</p>
+            <p className="text-xs font-semibold leading-5 text-ink-secondary mt-2">{step.text}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="rounded-2xl p-4" style={{ background: "var(--fin-green-bg)", border: "1px solid var(--fin-green-border)" }}>
+          <p className="text-sm font-extrabold" style={{ color: "var(--fin-green)" }}>Exemple maîtrisé</p>
+          <p className="text-xs font-semibold text-ink-secondary mt-1">Alimentation : 420 € prévus, 315 € dépensés, 105 € disponibles.</p>
+        </div>
+        <div className="rounded-2xl p-4" style={{ background: "var(--fin-amber-bg)", border: "1px solid var(--fin-amber-border)" }}>
+          <p className="text-sm font-extrabold" style={{ color: "var(--fin-amber)" }}>Exemple à surveiller</p>
+          <p className="text-xs font-semibold text-ink-secondary mt-1">Loisirs : 120 € prévus, 108 € dépensés. Il reste peu de marge.</p>
+        </div>
+        <div className="rounded-2xl p-4" style={{ background: "var(--fin-red-bg)", border: "1px solid var(--fin-red-border)" }}>
+          <p className="text-sm font-extrabold" style={{ color: "var(--fin-red)" }}>Exemple dépassé</p>
+          <p className="text-xs font-semibold text-ink-secondary mt-1">Restaurant : 80 € prévus, 112 € dépensés. Dépassement de 32 €.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EnvelopeCard({ status }: { status: EnvelopeStatus }) {
+  const percent = Math.min(100, Math.round(status.percent * 100));
+  const color = status.health === "safe" ? "var(--fin-green)" : status.health === "watch" ? "var(--fin-amber)" : status.health === "danger" ? "var(--fin-red)" : "var(--text-muted)";
+  const bg = status.health === "safe" ? "var(--fin-green-bg)" : status.health === "watch" ? "var(--fin-amber-bg)" : status.health === "danger" ? "var(--fin-red-bg)" : "var(--bg-surface-2)";
+  const remainingLabel = status.remaining >= 0 ? `${formatEur(status.remaining)} disponibles` : `${formatEur(Math.abs(status.remaining))} de dépassement`;
+
+  return (
+    <div className="card rounded-2xl border [border-color:var(--border)] p-5 shadow-card">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-ink-primary truncate">{status.label}</p>
+          <p className="text-xs text-ink-secondary mt-1">{remainingLabel}</p>
+        </div>
+        <span className="rounded-full px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider" style={{ background: bg, color }}>
+          {percent}%
+        </span>
+      </div>
+      <div className="mt-4 h-2 rounded-full overflow-hidden" style={{ background: "var(--bg-surface-3)" }}>
+        <div className="h-full rounded-full" style={{ width: `${Math.min(100, percent)}%`, background: color }} />
+      </div>
+      <div className="mt-3 flex items-center justify-between text-xs font-semibold">
+        <span style={{ color: "var(--text-muted)" }}>Dépensé : {formatEur(status.spent)}</span>
+        <span style={{ color: "var(--text-muted)" }}>Prévu : {formatEur(status.planned)}</span>
+      </div>
+    </div>
+  );
+}
 function MonthPilotCard({ store }: { store: ReturnType<typeof useAccountingStore.getState> }) {
   const summary = store.getMonthSummary();
   return (

@@ -13,6 +13,7 @@
 //   2026-05-01 | KREMER Régis | Patch 12A.1 — Ajout du type de crédit aux charges récurrentes
 //   2026-05-01 | KREMER Régis | Phase 12C — Charges saisonnières et montant réel vs prévu
 //   2026-05-01 | KREMER Régis | ZIP 5 — Intelligence financière avancée : scoring et priorité des recommandations
+//   2026-05-01 | KREMER Régis | Phase 13 — méthode des enveloppes budgétaires
 // =============================================================================
 
 import type { CreditType } from "./profile";
@@ -20,6 +21,8 @@ import type { CreditType } from "./profile";
 export type ExpenseOwner = "me" | "partner" | "shared";
 export type Frequency = "weekly" | "monthly" | "annual";
 export type MonthlyExpenseStatus = "pending" | "validated" | "added" | "ignored";
+export type EnvelopePeriod = "monthly" | "weekly";
+export type EnvelopeHealth = "safe" | "watch" | "danger" | "empty";
 
 export function toMonthly(amount: number, freq: Frequency): number {
   switch (freq) {
@@ -155,6 +158,22 @@ export interface IncomeLine {
   annualAmount:  number;
 }
 
+export interface EnvelopeSettings {
+  enabled: boolean;
+  period: EnvelopePeriod;
+}
+
+export interface EnvelopeStatus {
+  category: ExpenseCategory;
+  label: string;
+  planned: number;
+  spent: number;
+  remaining: number;
+  percent: number;
+  health: EnvelopeHealth;
+  isSavingsEnvelope: boolean;
+}
+
 export interface MonthlyBudget {
   totalIncomeMonthly:      number;
   totalIncomeAnnual:       number;
@@ -243,6 +262,7 @@ export interface AccountingState {
   monthlyExpenses: MonthlyExpenseLine[];
   activeMonth: string;
   closedMonths: string[];
+  envelopeSettings: EnvelopeSettings;
 }
 
 export function makeIncomeLine(

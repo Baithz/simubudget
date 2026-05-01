@@ -16,6 +16,7 @@
 //   2026-05-01 | KREMER Régis | Phase 12B — scope multi-profils des données comptables
 //   2026-05-01 | KREMER Régis | Phase 12C — charges saisonnières + réel vs prévu
 //   2026-05-01 | KREMER Régis | ZIP 5 — intelligence financière : recommandations contextualisées et scoring action
+//   2026-05-01 | KREMER Régis | Phase 13 — méthode des enveloppes budgétaires intégrée
 // =============================================================================
 
 import { create } from "zustand";
@@ -24,7 +25,7 @@ import {
   type IncomeLine, type ExpenseLine, type MonthlyBudget,
   type AccountingRecommendation, type ExpenseCategory, type IncomeType,
   type CoupleBudget, type PersonBudget, type MonthlyExpenseLine,
-  type MonthPilotSummary,
+  type MonthPilotSummary, type EnvelopeSettings, type EnvelopeStatus, type EnvelopePeriod,
   CATEGORY_ORDER, CATEGORY_LABELS,
   toMonthly, toAnnual, makeIncomeLine, makeExpenseLine,
 } from "@/types/accounting";
@@ -39,6 +40,7 @@ interface AccountingStore {
   activeMonth: string;
   closedMonths: string[];
   snapshots: MonthlySnapshot[];
+  envelopeSettings: EnvelopeSettings;
 
   addIncome:    (line: Omit<IncomeLine,  "id" | "monthlyAmount" | "annualAmount">) => void;
   updateIncome: (id: string, patch: Partial<Omit<IncomeLine, "id">>) => void;
@@ -59,6 +61,10 @@ interface AccountingStore {
   addMonthlyExpense: (line: Omit<MonthlyExpenseLine, "id" | "status"> & { status?: MonthlyExpenseLine["status"] }) => void;
   closeMonth: (month?: string) => void;
   reopenMonth: (month?: string) => void;
+  setEnvelopeMode: (enabled: boolean, period?: EnvelopePeriod) => void;
+  getEnvelopeStatuses: (month?: string) => EnvelopeStatus[];
+  getEnvelopeStatus: (category: ExpenseCategory, month?: string) => EnvelopeStatus;
+  redistributeEnvelopeRemaining: (from: ExpenseCategory, to: ExpenseCategory, amount: number) => void;
   decrementCreditMonths: () => void;  // Phase 12A — décrémente remainingMonths des crédits actifs
   getMonthSummary: (month?: string) => MonthPilotSummary;
 
@@ -152,6 +158,47 @@ function monthlyFromRecurring(expense: ExpenseLine, month: string): MonthlyExpen
 
 function usableMonthExpenses(lines: MonthlyExpenseLine[]): MonthlyExpenseLine[] {
   return lines.filter((line) => line.status === "validated" || line.status === "added");
+}
+
+const ENVELOPE_CATEGORIES: ExpenseCategory[] = [
+  "food", "transport", "health", "leisure", "clothing", "subscriptions",
+  "gifts", "childcare", "professional", "savings", "other",
+];
+
+function periodDivider(period: EnvelopePeriod): number {
+  return period === "weekly" ? 4.345 : 1;
+}
+
+function envelopeAmountForPeriod(amount: number, period: EnvelopePeriod): number {
+  return amount / periodDivider(period);
+}
+
+function envelopeHealth(planned: number, spent: number): EnvelopeStatus["health"] {
+  if (planned <= 0) return spent > 0 ? "danger" : "empty";
+  const ratio = spent / planned;
+  if (ratio >= 1) return "danger";
+  if (ratio >= 0.75) return "watch";
+  return "safe";
+}
+
+function buildEnvelopeStatus(category: ExpenseCategory, lines: MonthlyExpenseLine[], period: EnvelopePeriod): EnvelopeStatus {
+  const categoryLines = lines.filter((line) => line.category === category && line.status !== "ignored");
+  const plannedMonthly = categoryLines.reduce((sum, line) => sum + (line.plannedAmount ?? line.amount), 0);
+  const spentMonthly = categoryLines.reduce((sum, line) => sum + line.amount, 0);
+  const planned = envelopeAmountForPeriod(plannedMonthly, period);
+  const spent = envelopeAmountForPeriod(spentMonthly, period);
+  const percent = planned > 0 ? spent / planned : spent > 0 ? 1 : 0;
+  const status: EnvelopeStatus = {
+    category,
+    label: CATEGORY_LABELS[category],
+    planned,
+    spent,
+    remaining: planned - spent,
+    percent,
+    health: envelopeHealth(planned, spent),
+    isSavingsEnvelope: category === "savings",
+  };
+  return status;
 }
 
 function buildMonthlyBudget(incomes: IncomeLine[], expenses: Array<ExpenseLine | MonthlyExpenseLine>): MonthlyBudget {
@@ -354,26 +401,25 @@ function buildAccountingFromProfile(profile: UserProfile): { incomes: IncomeLine
     expenses.push(makeExpenseLine({ label: "Autres charges fixes", category: "other", amount: profile.otherFixed, frequency: "monthly", isFixed: true, isMandatory: true, owner: "me", notes: `${PROFILE_AUTO_NOTE}:other_fixed` }));
   }
 
-  // ── Crédits en cours (CreditItem[]) — Fix 1 ─────────────────────────────
-  const CREDIT_CATEGORY_MAP: Partial<Record<string, string>> = {
-    immo: "credit", auto: "transport", conso: "credit", revolving: "credit",
-  };
+  // ── Crédits en cours (CreditItem[]) — Fix 1 + Phase 13 ──────────────────
   for (const credit of profile.credits ?? []) {
     if (credit.monthlyPayment > 0) {
-      const cat = (CREDIT_CATEGORY_MAP[credit.type] ?? "credit") as ExpenseCategory;
-      expenses.push(makeExpenseLine({
+      const creditLine: Omit<ExpenseLine, "id" | "monthlyAmount" | "annualAmount"> = {
         label:       credit.name.trim() || "Crédit en cours",
-        category:    cat,
+        category:    "credit",
         amount:      credit.monthlyPayment,
         frequency:   "monthly",
         isFixed:     true,
         isMandatory: true,
         owner:       defaultFixedOwner,
         notes:       `${PROFILE_AUTO_NOTE}:credit_${credit.type}_${credit.name.trim().replace(/\s+/g, "_")}`,
-      }));
+      };
+      creditLine.creditType = credit.type;
+      if (credit.remainingMonths > 0) creditLine.remainingMonths = credit.remainingMonths;
+      if (credit.lender !== undefined && credit.lender.trim().length > 0) creditLine.lender = credit.lender.trim();
+      expenses.push(makeExpenseLine(creditLine));
     }
   }
-
   // ── Revenus variables (champs plats) — Fix 1 ────────────────────────────
   if (profile.variableEnabled && profile.variableIncomeMin > 0) {
     const average = Math.round((profile.variableIncomeMin + profile.variableIncomeMax) / 2);
@@ -400,6 +446,7 @@ export const useAccountingStore = create<AccountingStore>()(
       activeMonth: currentMonth(),
       closedMonths: [],
       snapshots: [],
+      envelopeSettings: { enabled: true, period: "monthly" },
 
       syncFromProfile: (profile) => set((s) => {
         const generated = buildAccountingFromProfile(profile);
@@ -427,6 +474,7 @@ export const useAccountingStore = create<AccountingStore>()(
         activeMonth: currentMonth(),
         closedMonths: [],
         snapshots: [],
+        envelopeSettings: { enabled: true, period: "monthly" },
       }),
 
 
@@ -575,6 +623,50 @@ export const useAccountingStore = create<AccountingStore>()(
       reopenMonth: (month = get().activeMonth) => set((s) => ({
         closedMonths: s.closedMonths.filter((m) => m !== month),
       })),
+      setEnvelopeMode: (enabled, period) => set((s) => ({
+        envelopeSettings: { enabled, period: period ?? s.envelopeSettings.period },
+      })),
+      getEnvelopeStatuses: (month = get().activeMonth): EnvelopeStatus[] => {
+        const period = get().envelopeSettings.period;
+        const lines = get().getMonthExpenses(month);
+        return ENVELOPE_CATEGORIES
+          .map((category) => buildEnvelopeStatus(category, lines, period))
+          .filter((status) => status.planned > 0 || status.spent > 0 || status.category === "savings");
+      },
+      getEnvelopeStatus: (category, month = get().activeMonth): EnvelopeStatus => {
+        return buildEnvelopeStatus(category, get().getMonthExpenses(month), get().envelopeSettings.period);
+      },
+      redistributeEnvelopeRemaining: (from, to, amount) => set((s) => {
+        const safeAmount = Math.max(0, Math.round(amount * 100) / 100);
+        if (safeAmount <= 0 || from === to) return {};
+        const fromLine = makeExpenseLine({
+          label: `Rééquilibrage enveloppe — ${CATEGORY_LABELS[from]}`,
+          category: from,
+          amount: -safeAmount,
+          frequency: "monthly",
+          isFixed: false,
+          isMandatory: false,
+          owner: "shared",
+          notes: `envelope:rebalance:${from}->${to}`,
+        });
+        const toLine = makeExpenseLine({
+          label: `Rééquilibrage enveloppe — ${CATEGORY_LABELS[to]}`,
+          category: to,
+          amount: safeAmount,
+          frequency: "monthly",
+          isFixed: false,
+          isMandatory: false,
+          owner: "shared",
+          notes: `envelope:rebalance:${from}->${to}`,
+        });
+        const fromMonthly = monthlyFromRecurring(fromLine, s.activeMonth);
+        const toMonthly = monthlyFromRecurring(toLine, s.activeMonth);
+        const additions = [fromMonthly, toMonthly].filter((line): line is MonthlyExpenseLine => line !== null);
+        return {
+          expenses: [...s.expenses, fromLine, toLine],
+          monthlyExpenses: [...s.monthlyExpenses, ...additions],
+        };
+      }),
       getMonthSummary: (month = get().activeMonth): MonthPilotSummary => {
         const { closedMonths } = get();
         const lines = get().getMonthExpenses(month);
@@ -962,6 +1054,40 @@ export const useAccountingStore = create<AccountingStore>()(
           recs.push(r_cf);
         }
 
+        // ── Phase 13 — Méthode des enveloppes : dépassements et réajustements ──
+        if (get().envelopeSettings.enabled) {
+          const envelopeStatuses = get().getEnvelopeStatuses();
+          const overspent = envelopeStatuses
+            .filter((status) => status.remaining < -1 && !status.isSavingsEnvelope)
+            .sort((a, b) => a.remaining - b.remaining);
+          for (const envelope of overspent.slice(0, 4)) {
+            recs.push({
+              id: `ENV_OVER_${envelope.category}`,
+              level: envelope.percent >= 1.25 ? "danger" : "vigilance",
+              category: envelope.category,
+              title: `Enveloppe ${envelope.label} dépassée de ${eur(Math.abs(envelope.remaining))}`,
+              detail: `Vous avez consommé ${eur(envelope.spent)} sur ${eur(envelope.planned)} prévus. La méthode des enveloppes recommande de compenser ce dépassement avant d'augmenter les autres dépenses variables.`,
+              saving: Math.abs(envelope.remaining),
+              action: "Réduisez les prochains achats de cette catégorie ou rééquilibrez depuis une enveloppe encore positive.",
+            });
+          }
+          const positiveEnvelopes = envelopeStatuses
+            .filter((status) => status.remaining > 10 && !status.isSavingsEnvelope)
+            .sort((a, b) => b.remaining - a.remaining);
+          if (positiveEnvelopes.length > 0 && budget.balanceMonthly > 0) {
+            const totalRemaining = positiveEnvelopes.reduce((sum, status) => sum + status.remaining, 0);
+            recs.push({
+              id: "ENV_REMAINING_TO_SAVINGS",
+              level: "conseil",
+              category: "savings",
+              title: `Enveloppes positives : ${eur(totalRemaining)} à orienter`,
+              detail: `Il reste ${eur(totalRemaining)} dans vos enveloppes variables. La méthode recommande de mettre ce reste de côté plutôt que de le consommer en fin de mois.`,
+              saving: totalRemaining,
+              action: "Transférez tout ou partie du reste vers l'enveloppe Épargne & Placements.",
+            });
+          }
+        }
+
         return enrichRecommendations(recs, budget, profile);
       },
 
@@ -985,7 +1111,7 @@ export const useAccountingStore = create<AccountingStore>()(
     {
       name: "simubudget-accounting",
       storage: createJSONStorage(() => profileScopedStorage()),
-      version: 10,
+      version: 11,
       migrate: (persisted) => {
         const state = persisted as Partial<AccountingStore> | undefined;
         if (!state) return persisted;
@@ -995,6 +1121,7 @@ export const useAccountingStore = create<AccountingStore>()(
           activeMonth: state.activeMonth ?? currentMonth(),
           closedMonths: state.closedMonths ?? [],
           snapshots: state.snapshots ?? [],
+          envelopeSettings: state.envelopeSettings ?? { enabled: true, period: "monthly" },
         };
       },
     }

@@ -40,6 +40,12 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Validate TypeScript
+        run: npm run type-check
+
+      - name: Validate Rust tests
+        run: npm run test:rust
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -53,10 +59,14 @@ jobs:
             ## SimuBudget ${{ github.ref_name }}
 
             ### Installation
-            - Telechargez `SimuBudget_x.x.x_x64-setup.exe` pour l'installateur guide (recommande)
-            - Telechargez `SimuBudget_x.x.x_x64_en-US.msi` pour le MSI entreprise
+            - Téléchargez `SimuBudget_x.x.x_x64-setup.exe` pour l'installateur guidé recommandé.
+            - Téléchargez `SimuBudget_x.x.x_x64_en-US.msi` pour le MSI entreprise.
 
-            ### Mise a jour automatique
-            Si vous avez deja SimuBudget installe, la mise a jour sera proposee automatiquement au prochain demarrage.
+            ### Mise à jour automatique
+            Si vous avez déjà SimuBudget installé, la mise à jour sera proposée automatiquement au prochain démarrage.
+
+            ### Version
+            - Version applicative : 2.0.0
+            - Artefact updater attendu : `latest.json`
           releaseDraft: false
           prerelease: false
