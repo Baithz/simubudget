@@ -19,7 +19,8 @@
     "test:all": "npm run test && npm run test:rust",
     "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "format": "prettier --write src/",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
