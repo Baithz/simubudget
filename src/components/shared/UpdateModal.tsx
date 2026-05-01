@@ -90,7 +90,7 @@ export function UpdateModal({ status, updateInfo, error, progress, onInstall, on
 
                   {/* Versions */}
                   <div className="mt-3 flex items-center justify-center gap-3">
-                    <VersionBadge label={"v1.9.0"} muted />
+                    <VersionBadge label={"v2.0.1"} muted />
                     <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5" style={{ color: "var(--text-muted)" }}>
                       <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
                     </svg>

@@ -14,6 +14,7 @@
 //   2026-05-01 | KREMER Régis | Phase 12C — Charges saisonnières et montant réel vs prévu
 //   2026-05-01 | KREMER Régis | ZIP 5 — Intelligence financière avancée : scoring et priorité des recommandations
 //   2026-05-01 | KREMER Régis | Phase 13 — méthode des enveloppes budgétaires
+//   2026-05-01 | KREMER Régis | Phase 13C.3 — création et gestion explicite des enveloppes
 // =============================================================================
 
 import type { CreditType } from "./profile";
@@ -163,6 +164,15 @@ export interface EnvelopeSettings {
   period: EnvelopePeriod;
 }
 
+export interface EnvelopeBudget {
+  id: string;
+  category: ExpenseCategory;
+  label: string;
+  monthlyLimit: number;
+  isActive: boolean;
+  notes?: string;
+}
+
 export interface EnvelopeStatus {
   category: ExpenseCategory;
   label: string;
@@ -172,6 +182,7 @@ export interface EnvelopeStatus {
   percent: number;
   health: EnvelopeHealth;
   isSavingsEnvelope: boolean;
+  isConfigured: boolean;
 }
 
 export interface MonthlyBudget {
@@ -263,6 +274,7 @@ export interface AccountingState {
   activeMonth: string;
   closedMonths: string[];
   envelopeSettings: EnvelopeSettings;
+  envelopeBudgets: EnvelopeBudget[];
 }
 
 export function makeIncomeLine(

@@ -17,6 +17,7 @@
 //   2026-05-01 | KREMER Régis | Phase 12C — charges saisonnières + réel vs prévu
 //   2026-05-01 | KREMER Régis | ZIP 5 — intelligence financière : recommandations contextualisées et scoring action
 //   2026-05-01 | KREMER Régis | Phase 13 — méthode des enveloppes budgétaires intégrée
+//   2026-05-01 | KREMER Régis | Phase 13C.3 — création, édition et liaison dépenses↔enveloppes
 // =============================================================================
 
 import { create } from "zustand";
@@ -25,7 +26,7 @@ import {
   type IncomeLine, type ExpenseLine, type MonthlyBudget,
   type AccountingRecommendation, type ExpenseCategory, type IncomeType,
   type CoupleBudget, type PersonBudget, type MonthlyExpenseLine,
-  type MonthPilotSummary, type EnvelopeSettings, type EnvelopeStatus, type EnvelopePeriod,
+  type MonthPilotSummary, type EnvelopeSettings, type EnvelopeStatus, type EnvelopePeriod, type EnvelopeBudget,
   CATEGORY_ORDER, CATEGORY_LABELS,
   toMonthly, toAnnual, makeIncomeLine, makeExpenseLine,
 } from "@/types/accounting";
@@ -41,6 +42,7 @@ interface AccountingStore {
   closedMonths: string[];
   snapshots: MonthlySnapshot[];
   envelopeSettings: EnvelopeSettings;
+  envelopeBudgets: EnvelopeBudget[];
 
   addIncome:    (line: Omit<IncomeLine,  "id" | "monthlyAmount" | "annualAmount">) => void;
   updateIncome: (id: string, patch: Partial<Omit<IncomeLine, "id">>) => void;
@@ -62,6 +64,8 @@ interface AccountingStore {
   closeMonth: (month?: string) => void;
   reopenMonth: (month?: string) => void;
   setEnvelopeMode: (enabled: boolean, period?: EnvelopePeriod) => void;
+  upsertEnvelopeBudget: (budget: Omit<EnvelopeBudget, "id"> & { id?: string }) => void;
+  removeEnvelopeBudget: (id: string) => void;
   getEnvelopeStatuses: (month?: string) => EnvelopeStatus[];
   getEnvelopeStatus: (category: ExpenseCategory, month?: string) => EnvelopeStatus;
   redistributeEnvelopeRemaining: (from: ExpenseCategory, to: ExpenseCategory, amount: number) => void;
@@ -181,9 +185,11 @@ function envelopeHealth(planned: number, spent: number): EnvelopeStatus["health"
   return "safe";
 }
 
-function buildEnvelopeStatus(category: ExpenseCategory, lines: MonthlyExpenseLine[], period: EnvelopePeriod): EnvelopeStatus {
+function buildEnvelopeStatus(category: ExpenseCategory, lines: MonthlyExpenseLine[], period: EnvelopePeriod, budgets: EnvelopeBudget[] = []): EnvelopeStatus {
   const categoryLines = lines.filter((line) => line.category === category && line.status !== "ignored");
-  const plannedMonthly = categoryLines.reduce((sum, line) => sum + (line.plannedAmount ?? line.amount), 0);
+  const configuredBudget = budgets.find((budget) => budget.category === category && budget.isActive);
+  const plannedFromLines = categoryLines.reduce((sum, line) => sum + (line.plannedAmount ?? line.amount), 0);
+  const plannedMonthly = configuredBudget ? configuredBudget.monthlyLimit : plannedFromLines;
   const spentMonthly = categoryLines.reduce((sum, line) => sum + line.amount, 0);
   const planned = envelopeAmountForPeriod(plannedMonthly, period);
   const spent = envelopeAmountForPeriod(spentMonthly, period);
@@ -197,6 +203,7 @@ function buildEnvelopeStatus(category: ExpenseCategory, lines: MonthlyExpenseLin
     percent,
     health: envelopeHealth(planned, spent),
     isSavingsEnvelope: category === "savings",
+    isConfigured: configuredBudget !== undefined,
   };
   return status;
 }
@@ -447,6 +454,7 @@ export const useAccountingStore = create<AccountingStore>()(
       closedMonths: [],
       snapshots: [],
       envelopeSettings: { enabled: true, period: "monthly" },
+      envelopeBudgets: [],
 
       syncFromProfile: (profile) => set((s) => {
         const generated = buildAccountingFromProfile(profile);
@@ -475,6 +483,7 @@ export const useAccountingStore = create<AccountingStore>()(
         closedMonths: [],
         snapshots: [],
         envelopeSettings: { enabled: true, period: "monthly" },
+        envelopeBudgets: [],
       }),
 
 
@@ -626,15 +635,39 @@ export const useAccountingStore = create<AccountingStore>()(
       setEnvelopeMode: (enabled, period) => set((s) => ({
         envelopeSettings: { enabled, period: period ?? s.envelopeSettings.period },
       })),
+      upsertEnvelopeBudget: (budget) => set((s) => {
+        const monthlyLimit = Math.max(0, Math.round(budget.monthlyLimit * 100) / 100);
+        if (monthlyLimit <= 0) return {};
+        const existingId = budget.id ?? s.envelopeBudgets.find((item) => item.category === budget.category)?.id;
+        const next: EnvelopeBudget = {
+          id: existingId ?? crypto.randomUUID(),
+          category: budget.category,
+          label: budget.label.trim().length > 0 ? budget.label.trim() : CATEGORY_LABELS[budget.category],
+          monthlyLimit,
+          isActive: budget.isActive,
+        };
+        if (budget.notes !== undefined && budget.notes.trim().length > 0) next.notes = budget.notes.trim();
+        const exists = s.envelopeBudgets.some((item) => item.id === next.id);
+        return {
+          envelopeBudgets: exists
+            ? s.envelopeBudgets.map((item) => item.id === next.id ? next : item)
+            : [...s.envelopeBudgets, next],
+        };
+      }),
+      removeEnvelopeBudget: (id) => set((s) => ({
+        envelopeBudgets: s.envelopeBudgets.filter((item) => item.id !== id),
+      })),
       getEnvelopeStatuses: (month = get().activeMonth): EnvelopeStatus[] => {
         const period = get().envelopeSettings.period;
         const lines = get().getMonthExpenses(month);
-        return ENVELOPE_CATEGORIES
-          .map((category) => buildEnvelopeStatus(category, lines, period))
-          .filter((status) => status.planned > 0 || status.spent > 0 || status.category === "savings");
+        const budgets = get().envelopeBudgets;
+        const categories = Array.from(new Set([...ENVELOPE_CATEGORIES, ...budgets.filter((budget) => budget.isActive).map((budget) => budget.category)]));
+        return categories
+          .map((category) => buildEnvelopeStatus(category, lines, period, budgets))
+          .filter((status) => status.isConfigured || status.planned > 0 || status.spent > 0 || status.category === "savings");
       },
       getEnvelopeStatus: (category, month = get().activeMonth): EnvelopeStatus => {
-        return buildEnvelopeStatus(category, get().getMonthExpenses(month), get().envelopeSettings.period);
+        return buildEnvelopeStatus(category, get().getMonthExpenses(month), get().envelopeSettings.period, get().envelopeBudgets);
       },
       redistributeEnvelopeRemaining: (from, to, amount) => set((s) => {
         const safeAmount = Math.max(0, Math.round(amount * 100) / 100);
@@ -1111,7 +1144,7 @@ export const useAccountingStore = create<AccountingStore>()(
     {
       name: "simubudget-accounting",
       storage: createJSONStorage(() => profileScopedStorage()),
-      version: 11,
+      version: 12,
       migrate: (persisted) => {
         const state = persisted as Partial<AccountingStore> | undefined;
         if (!state) return persisted;
@@ -1122,6 +1155,7 @@ export const useAccountingStore = create<AccountingStore>()(
           closedMonths: state.closedMonths ?? [],
           snapshots: state.snapshots ?? [],
           envelopeSettings: state.envelopeSettings ?? { enabled: true, period: "monthly" },
+          envelopeBudgets: state.envelopeBudgets ?? [],
         };
       },
     }

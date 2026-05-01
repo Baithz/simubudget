@@ -384,7 +384,7 @@ export default function App() {
           </NavLink>
           {!collapsed && (
             <p className="px-2 pt-1 text-[10px] font-semibold" style={{ color: "var(--text-placeholder)" }}>
-              v1.9.0
+              v2.0.1
             </p>
           )}
         </div>

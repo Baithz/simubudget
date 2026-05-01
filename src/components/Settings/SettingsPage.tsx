@@ -29,7 +29,7 @@ import logoFull from "@/assets/logo-full.png";
 import PinSetupModal from "@/components/ProfileSelector/PinSetupModal";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "2.0.1";
 
 interface Option<T extends string> {
   value: T;

@@ -2,13 +2,17 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Permissions principales de SimuBudget : noyau Tauri, dialogue, fichiers, ouverture de liens externes et mise à jour automatique.",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
+    "core:app:allow-version",
     "dialog:default",
     "fs:default",
     "shell:default",
     "shell:allow-open",
+    "process:default",
     "updater:default"
   ]
 }

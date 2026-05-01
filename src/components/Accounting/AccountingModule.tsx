@@ -19,6 +19,7 @@
 //   2026-05-01 | KREMER Régis | Patch 8.1 — stabilité onglets Mes Comptes
 //   2026-05-01 | KREMER Régis | Phase 13 — onglet enveloppes budgétaires
 //   2026-05-01 | KREMER Régis | Phase 13B — pédagogie et aide UX méthode enveloppes
+//   2026-05-01 | KREMER Régis | Phase 13C.3 — création explicite des enveloppes et liaison dépenses
 // =============================================================================
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -31,7 +32,7 @@ import {
   CATEGORY_LABELS, CATEGORY_COLORS, CATEGORY_ORDER, INCOME_LABELS,
   type ExpenseCategory, type IncomeType, type Frequency, type ExpenseOwner,
   type AccountingRecommendation, type MonthlyExpenseLine, type MonthlyBudget,
-  type ExpenseLine, type EnvelopeStatus,
+  type ExpenseLine, type EnvelopeStatus, type EnvelopeBudget,
 } from "@/types/accounting";
 import { formatEur } from "@/utils/formatCurrency";
 import type { CreditType } from "@/types/profile";
@@ -271,15 +272,17 @@ function BilanTab({ store, budget, recs }: {
 function EnvelopeTab({ store }: { store: ReturnType<typeof useAccountingStore.getState> }) {
   const settings = store.envelopeSettings;
   const [showGuide, setShowGuide] = useState(false);
-  const statuses = store.getEnvelopeStatuses();
+  const [showSetup, setShowSetup] = useState(store.envelopeBudgets.length === 0);
   const [fromCategory, setFromCategory] = useState<ExpenseCategory>("food");
   const [toCategory, setToCategory] = useState<ExpenseCategory>("savings");
   const [transferAmount, setTransferAmount] = useState(0);
+  const statuses = store.getEnvelopeStatuses();
   const totalPlanned = statuses.reduce((sum, status) => sum + status.planned, 0);
   const totalSpent = statuses.reduce((sum, status) => sum + status.spent, 0);
   const totalRemaining = totalPlanned - totalSpent;
   const periodLabel = settings.period === "weekly" ? "semaine" : "mois";
   const positiveStatuses = statuses.filter((status) => status.remaining > 0 && !status.isSavingsEnvelope);
+  const hasConfiguredEnvelopes = store.envelopeBudgets.some((budget) => budget.isActive);
   const hasStatuses = statuses.length > 0;
 
   function quickSaveRemainder(): void {
@@ -307,12 +310,12 @@ function EnvelopeTab({ store }: { store: ReturnType<typeof useAccountingStore.ge
         <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-widest font-bold text-ink-muted">Méthode des enveloppes</p>
-            <h2 className="text-xl font-bold text-ink-primary mt-1">Piloter les dépenses variables sans doublon</h2>
+            <h2 className="text-xl font-bold text-ink-primary mt-1">Créer, suivre et ajuster vos enveloppes</h2>
             <p className="text-sm text-ink-secondary mt-2 max-w-3xl">
-              La méthode des enveloppes sert à piloter les dépenses variables avant qu’elles ne dérapent. SimuBudget transforme vos catégories du mois en enveloppes : vous voyez le montant prévu, ce qui est déjà dépensé et ce qu’il reste.
+              Une enveloppe est un plafond mensuel volontaire sur une catégorie variable. Quand vous ajoutez une dépense réelle dans cette catégorie, l’enveloppe se met à jour automatiquement.
             </p>
             <p className="text-xs font-semibold text-ink-muted mt-2 max-w-3xl">
-              À garder sur le compte : loyer, crédits, assurances, énergie et abonnements prélevés. À suivre en enveloppes : alimentation, carburant, loisirs, restaurant, santé, habillement, cadeaux, vacances et imprévus.
+              À garder hors enveloppes : loyer, crédits, assurances, énergie et prélèvements fixes. À piloter en enveloppes : alimentation, carburant, loisirs, restaurant, santé, habillement, cadeaux, vacances et imprévus.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -323,11 +326,10 @@ function EnvelopeTab({ store }: { store: ReturnType<typeof useAccountingStore.ge
             >
               {settings.enabled ? "Mode actif" : "Activer"}
             </button>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setShowGuide((value) => !value)}
-            >
+            <button type="button" className="btn-secondary" onClick={() => setShowSetup((value) => !value)}>
+              {showSetup ? "Masquer la configuration" : "Configurer mes enveloppes"}
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => setShowGuide((value) => !value)}>
               Comment ça marche ?
             </button>
             <button
@@ -341,11 +343,18 @@ function EnvelopeTab({ store }: { store: ReturnType<typeof useAccountingStore.ge
         </div>
       </div>
 
+      {!hasConfiguredEnvelopes && (
+        <div className="rounded-2xl p-4 text-sm font-semibold" style={{ background: "var(--fin-amber-bg)", color: "var(--fin-amber)", border: "1px solid var(--fin-amber-border)" }}>
+          Aucune enveloppe n’est encore configurée. Cliquez sur “Configurer mes enveloppes”, choisissez une catégorie, puis indiquez le montant maximum autorisé sur le mois.
+        </div>
+      )}
+
       {showGuide && <EnvelopeGuide />}
+      {showSetup && <EnvelopeSetup store={store} />}
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-        <MetricCard label={`Budget enveloppes / ${periodLabel}`} value={formatEur(totalPlanned)} sub="Total prévu sur les catégories variables" />
-        <MetricCard label={`Dépensé / ${periodLabel}`} value={formatEur(totalSpent)} tone={totalSpent <= totalPlanned ? "green" : "amber"} sub="Somme des dépenses suivies" />
+        <MetricCard label={`Budget enveloppes / ${periodLabel}`} value={formatEur(totalPlanned)} sub="Total prévu sur les enveloppes actives" />
+        <MetricCard label={`Dépensé / ${periodLabel}`} value={formatEur(totalSpent)} tone={totalSpent <= totalPlanned ? "green" : "amber"} sub="Dépenses réelles liées aux catégories" />
         <MetricCard label="Reste disponible" value={`${totalRemaining >= 0 ? "+" : ""}${formatEur(totalRemaining)}`} tone={totalRemaining >= 0 ? "green" : "red"} sub="À conserver ou transférer vers épargne" />
         <MetricCard label="Enveloppes surveillées" value={String(statuses.filter((status) => status.health === "watch" || status.health === "danger").length)} tone="amber" sub="Dépassement ou seuil proche" />
       </div>
@@ -357,7 +366,7 @@ function EnvelopeTab({ store }: { store: ReturnType<typeof useAccountingStore.ge
       )}
 
       {!hasStatuses ? (
-        <EmptyState label="Aucune enveloppe à afficher" sub="Ajoutez ou validez des dépenses variables pour créer automatiquement vos enveloppes." />
+        <EmptyState label="Aucune enveloppe à afficher" sub="Configurez vos enveloppes pour définir vos plafonds mensuels." />
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {statuses.map((status) => <EnvelopeCard key={status.category} status={status} />)}
@@ -387,6 +396,111 @@ function EnvelopeTab({ store }: { store: ReturnType<typeof useAccountingStore.ge
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function EnvelopeSetup({ store }: { store: ReturnType<typeof useAccountingStore.getState> }) {
+  const [form, setForm] = useState<{ id: string | null; category: ExpenseCategory; label: string; monthlyLimit: number; notes: string }>({
+    id: null,
+    category: "food",
+    label: CATEGORY_LABELS.food,
+    monthlyLimit: 0,
+    notes: "",
+  });
+
+  function reset(category: ExpenseCategory = "food"): void {
+    setForm({ id: null, category, label: CATEGORY_LABELS[category], monthlyLimit: 0, notes: "" });
+  }
+
+  function editEnvelope(envelope: EnvelopeBudget): void {
+    setForm({
+      id: envelope.id,
+      category: envelope.category,
+      label: envelope.label,
+      monthlyLimit: envelope.monthlyLimit,
+      notes: envelope.notes ?? "",
+    });
+  }
+
+  function saveEnvelope(): void {
+    if (form.monthlyLimit <= 0) return;
+    const payload: Omit<EnvelopeBudget, "id"> & { id?: string } = {
+      category: form.category,
+      label: form.label.trim().length > 0 ? form.label.trim() : CATEGORY_LABELS[form.category],
+      monthlyLimit: form.monthlyLimit,
+      isActive: true,
+    };
+    if (form.id !== null) payload.id = form.id;
+    if (form.notes.trim().length > 0) payload.notes = form.notes.trim();
+    store.upsertEnvelopeBudget(payload);
+    reset(form.category);
+  }
+
+  const active = store.envelopeBudgets.filter((budget) => budget.isActive);
+
+  return (
+    <div className="card rounded-2xl border [border-color:var(--border)] p-5 shadow-card space-y-5">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-widest font-bold text-ink-muted">Configuration</p>
+          <h3 className="text-lg font-extrabold text-ink-primary mt-1">Mes enveloppes du mois</h3>
+          <p className="text-sm text-ink-secondary mt-1 max-w-3xl">
+            Définissez vos plafonds. Ensuite, chaque dépense réelle ajoutée dans “Dépenses du mois” avec la même catégorie consomme automatiquement l’enveloppe correspondante.
+          </p>
+        </div>
+        <button type="button" className="btn-secondary" onClick={() => reset()}>
+          Nouvelle enveloppe
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 items-end">
+        <SelectInput
+          label="Catégorie"
+          value={form.category}
+          options={CATEGORY_ORDER.map((category) => ({ value: category, label: CATEGORY_LABELS[category] }))}
+          onChange={(value) => {
+            const category = value as ExpenseCategory;
+            const existing = store.envelopeBudgets.find((budget) => budget.category === category);
+            if (existing) editEnvelope(existing);
+            else reset(category);
+          }}
+        />
+        <TextInput label="Nom de l’enveloppe" value={form.label} onChange={(value) => setForm({ ...form, label: value })} />
+        <NumberInput label="Montant mensuel (€)" value={form.monthlyLimit} onChange={(value) => setForm({ ...form, monthlyLimit: value })} />
+        <TextInput label="Note (optionnel)" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} placeholder="Ex : objectif carburant" />
+        <button type="button" className="btn-brand w-full" onClick={saveEnvelope}>
+          {form.id ? "Mettre à jour" : "Créer l’enveloppe"}
+        </button>
+      </div>
+
+      {active.length === 0 ? (
+        <EmptyState label="Aucune enveloppe configurée" sub="Créez au moins une enveloppe pour commencer le suivi." />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {active.map((envelope) => {
+            const status = store.getEnvelopeStatus(envelope.category);
+            return (
+              <div key={envelope.id} className="rounded-2xl p-4" style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-extrabold text-ink-primary truncate">{envelope.label}</p>
+                    <p className="text-xs font-semibold text-ink-secondary mt-1">{CATEGORY_LABELS[envelope.category]} · plafond {formatEur(envelope.monthlyLimit)}/mois</p>
+                    {envelope.notes && <p className="text-xs text-ink-muted mt-1 truncate">{envelope.notes}</p>}
+                  </div>
+                  <span className="font-mono text-xs font-black" style={{ color: status.remaining >= 0 ? "var(--fin-green)" : "var(--fin-red)" }}>
+                    {formatEur(status.remaining)}
+                  </span>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button type="button" className="btn-mini" onClick={() => editEnvelope(envelope)}>Modifier</button>
+                  <button type="button" className="btn-mini" onClick={() => store.removeEnvelopeBudget(envelope.id)}>Supprimer</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -620,7 +734,7 @@ function DépensesTab({ store, isCouple, personName, partnerName }: {
     <div className="space-y-4">
       <Toolbar title="Dépenses du mois" action="Ajouter une dépense réelle" onAction={() => setShowRealForm(true)} secondaryAction="Nouvelle charge récurrente" onSecondaryAction={() => setShowPlannedForm(true)} />
 
-      {showRealForm && <MonthlyExpenseForm form={realForm} setForm={setRealForm} isCouple={isCouple} personName={personName} partnerName={partnerName} onSave={saveReal} onCancel={() => setShowRealForm(false)} />}
+      {showRealForm && <MonthlyExpenseForm form={realForm} setForm={setRealForm} store={store} isCouple={isCouple} personName={personName} partnerName={partnerName} onSave={saveReal} onCancel={() => setShowRealForm(false)} />}
       {showPlannedForm && <PlannedExpenseForm form={plannedForm} setForm={setPlannedForm} isCouple={isCouple} personName={personName} partnerName={partnerName} onSave={savePlanned} onCancel={() => setShowPlannedForm(false)} />}
 
       {groups.length === 0 ? <EmptyState label="Aucune dépense pour ce mois" sub="Ajoutez une charge récurrente ou une dépense réelle." /> : (
@@ -887,9 +1001,10 @@ function PlannedExpenseForm({ form, setForm, isCouple, personName, partnerName, 
   );
 }
 
-function MonthlyExpenseForm({ form, setForm, isCouple, personName, partnerName, onSave, onCancel }: {
+function MonthlyExpenseForm({ form, setForm, store, isCouple, personName, partnerName, onSave, onCancel }: {
   form: { label: string; category: ExpenseCategory; amount: number; isFixed: boolean; isMandatory: boolean; owner: ExpenseOwner };
   setForm: (form: { label: string; category: ExpenseCategory; amount: number; isFixed: boolean; isMandatory: boolean; owner: ExpenseOwner }) => void;
+  store: ReturnType<typeof useAccountingStore.getState>;
   isCouple: boolean;
   personName: string;
   partnerName: string;
@@ -912,6 +1027,7 @@ function MonthlyExpenseForm({ form, setForm, isCouple, personName, partnerName, 
         <CategoryInput value={form.category} onChange={(category) => setForm({ ...form, category })} />
       </div>
       <NumberInput label="Montant (€)" value={form.amount} onChange={(value) => setForm({ ...form, amount: value })} />
+      <EnvelopeImpactPreview store={store} category={form.category} amount={form.amount} />
       <div className="flex flex-wrap items-center gap-6">
         <ToggleInput label="Fixe" checked={form.isFixed} onChange={(checked) => setForm({ ...form, isFixed: checked })} />
         <ToggleInput label="Obligatoire" checked={form.isMandatory} onChange={(checked) => setForm({ ...form, isMandatory: checked })} />
@@ -925,6 +1041,24 @@ function MonthlyExpenseForm({ form, setForm, isCouple, personName, partnerName, 
         <button type="button" className="btn-secondary" onClick={onCancel}>Annuler</button>
         <button type="button" className="btn-brand" onClick={onSave}>Enregistrer</button>
       </div>
+    </div>
+  );
+}
+
+function EnvelopeImpactPreview({ store, category, amount }: { store: ReturnType<typeof useAccountingStore.getState>; category: ExpenseCategory; amount: number }) {
+  const status = store.getEnvelopeStatus(category);
+  if (!status.isConfigured) {
+    return (
+      <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background: "var(--bg-surface-2)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>
+        Aucune enveloppe configurée pour {CATEGORY_LABELS[category]}. La dépense sera bien enregistrée, mais aucun plafond dédié ne sera suivi.
+      </div>
+    );
+  }
+
+  const projectedRemaining = status.remaining - Math.max(0, amount);
+  return (
+    <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background: projectedRemaining >= 0 ? "var(--fin-green-bg)" : "var(--fin-red-bg)", color: projectedRemaining >= 0 ? "var(--fin-green)" : "var(--fin-red)", border: projectedRemaining >= 0 ? "1px solid var(--fin-green-border)" : "1px solid var(--fin-red-border)" }}>
+      Enveloppe impactée : {status.label} · reste actuel {formatEur(status.remaining)} · après saisie {formatEur(projectedRemaining)}.
     </div>
   );
 }

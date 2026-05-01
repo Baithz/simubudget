@@ -8,6 +8,7 @@
 //   2026-04-26 | KREMER Regis | Ajout DbState + commandes profil Phase 1
 //   2026-04-26 | KREMER Regis | Correction use tauri::Manager + commandes Phase 1
 //   2026-05-01 | KREMER Regis | Correction Phase 13C.2 — activation plugin updater sans permission process invalide
+//   2026-05-01 | KREMER Regis | Phase 13C.3 — activation plugin process pour relance après mise à jour
 // =============================================================================
 
 pub mod calculator;
@@ -26,6 +27,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()
