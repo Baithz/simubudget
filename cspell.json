@@ -1,0 +1,25 @@
+{
+  "version": "0.2",
+  "language": "fr,en",
+  "words": [
+    "KREMER", "tauri", "simubudget", "rusqlite", "serde", "thiserror", "chrono",
+    "Fichier", "Auteur", "Desc", "Changelog", "Auteur",
+    "alertes", "recommandations", "personnalisees", "expertes",
+    "logement", "achat", "epargne", "revenus", "depenses", "loyer", "taux",
+    "endettement", "reste", "vivre", "mensualite", "apport", "notaire",
+    "revalorisation", "remboursement", "anticipe", "couteux", "seuil",
+    "bancaire", "banque", "signifie", "superieur", "dessus", "depassent",
+    "requise", "negatif", "faible", "moindre", "imprevu", "desequilibrer",
+    "votre", "mois", "moins", "Reste", "Taux", "Visez", "reste",
+    "Renegociez", "loyer", "Coussin", "securite", "insuffisant",
+    "Aucune", "sante", "peut", "couvrant", "optimisation", "Moteur",
+    "regles", "ALERTES", "Rachat", "etat", "dans", "obtenir",
+    "depassent", "postes", "depenses", "importants", "reduisez",
+    "Identifiez", "recommande", "superieur", "dessus"
+  ],
+  "ignorePaths": [
+    "node_modules/**",
+    "dist/**",
+    "src-tauri/target/**"
+  ]
+}

@@ -1,0 +1,15 @@
+SIMUBUDGET — LICENCE D'UTILISATION
+Auteur : KREMER Régis
+Version : 0.1.0
+
+SimuBudget est une application locale de simulation et de pilotage budgétaire.
+Les données utilisateur restent stockées localement sur la machine de l'utilisateur.
+
+Cette version est fournie pour usage personnel, test, validation et distribution interne.
+Toute redistribution publique, revente, reproduction du code source ou modification commerciale
+nécessite une autorisation écrite préalable de l'auteur.
+
+Les résultats financiers affichés par SimuBudget sont indicatifs.
+Ils ne remplacent pas une simulation officielle CAF, bancaire, fiscale ou un conseil professionnel réglementé.
+
+Copyright © 2026 KREMER Régis. Tous droits réservés.
