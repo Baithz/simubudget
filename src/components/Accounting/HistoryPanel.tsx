@@ -7,6 +7,7 @@
 //   2026-04-27 | KREMER Regis | Creation Phase 6
 //   2026-04-28 | KREMER Regis | Correction TS strict - guards undefined sur snapshots
 //   2026-04-29 | KREMER Regis | Correction crash historique sur snapshots invalides
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
 // =============================================================================
 
 import { clsx } from "clsx";
@@ -73,7 +74,7 @@ export function HistoryPanel() {
   const first   = snapshots[0]!;
   const last    = snapshots[snapshots.length - 1]!;
   const ssfTrend     = last.healthScore    - first.healthScore;
-  const balanceTrend = last.balanceMonthly - first.balanceMonthly;
+  const _balanceTrend = last.balanceMonthly - first.balanceMonthly;
 
   // Données graphe : format pour recharts
   const chartData = snapshots.map((s) => ({

@@ -13,14 +13,19 @@
 //                               récap enrichi, accents complets
 //   2026-05-01 | KREMER Régis | Phase 12B — création profil depuis le selector
 //   2026-05-01 | KREMER Régis | ZIP 7.1 — choix PIN lors de la création profil
+//   2026-05-02 | KREMER Régis | Correction création profil isolée — départ vierge, sans reprise du profil actif
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
+//   2026-05-02 | KREMER Régis | Correction Phase 14.1 — mode nouveau profil strictement vierge et isolation des stores
 // =============================================================================
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProfileStore }    from "@/store/profileStore";
 import { hashProfilePin, useProfileListStore } from "@/store/profileListStore";
 import { useAccountingStore } from "@/store/accountingStore";
+import { useScenarioStore } from "@/store/scenarioStore";
+import { usePurchaseStore } from "@/store/purchaseStore";
 import { useProfile }         from "@/hooks/useProfile";
 import { DEFAULT_PROFILE }    from "@/types/profile";
 import type {
@@ -84,10 +89,41 @@ function normalizeProfile(draft: UserProfile): UserProfile {
   return { ...draft, holder, partner, partnerSalaryNet: salaryNet };
 }
 
+function createBlankProfile(): UserProfile {
+  const now = new Date().toISOString();
+  return {
+    ...DEFAULT_PROFILE,
+    id: crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+    holder: { firstName: "", lastName: "" },
+    salaryNet: 0,
+    bonusAnnual: 0,
+    allocationsTotal: 0,
+    pensionReceived: 0,
+    rentalIncome: 0,
+    otherIncome: 0,
+    currentHousing: {
+      ...DEFAULT_PROFILE.currentHousing,
+      rent: 0,
+      charges: 0,
+      surface: 0,
+    },
+    phoneInternet: 0,
+    insuranceTotal: 0,
+    pensionPaid: 0,
+    otherFixed: 0,
+    department: "",
+    city: "",
+  };
+}
+
 // ─── Wizard principal ────────────────────────────────────────────────────────
 
 export function OnboardingWizard() {
   const navigate        = useNavigate();
+  const [searchParams]  = useSearchParams();
+  const isNewProfileMode = searchParams.get("new") === "1";
   const { profile: currentProfile, setProfile, completeOnboarding, reset } = useProfileStore();
   const activeProfileId = useProfileListStore((state) => state.activeProfileId);
   const setActiveProfile = useProfileListStore((state) => state.setActive);
@@ -95,11 +131,13 @@ export function OnboardingWizard() {
   const updateProfileEntry = useProfileListStore((state) => state.updateEntry);
   const syncFromProfile = useAccountingStore((s) => s.syncFromProfile);
   const resetAccounting = useAccountingStore((s) => s.resetAccounting);
+  const clearScenarios = useScenarioStore((s) => s.clearEvents);
+  const clearPurchaseResult = usePurchaseStore((s) => s.clearResult);
   const { saveProfile, loading, error } = useProfile();
 
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<UserProfile>(() =>
-    normalizeProfile({ ...currentProfile })
+    normalizeProfile(!isNewProfileMode && activeProfileId ? { ...currentProfile } : createBlankProfile())
   );
   const [pendingProfile, setPendingProfile] = useState<UserProfile | null>(null);
 
@@ -115,22 +153,28 @@ export function OnboardingWizard() {
     const finalProfile = { ...profile, id: ensuredId };
     setActiveProfile(ensuredId);
     sessionStorage.setItem(PROFILE_SESSION_KEY, ensuredId);
+    if (isNewProfileMode) {
+      resetAccounting();
+      clearScenarios();
+      clearPurchaseResult();
+    }
     setProfile(finalProfile);
     syncFromProfile(finalProfile);
     completeOnboarding();
     await saveProfile(finalProfile);
-    navigate("/");
+    navigate("/", { replace: true });
   }
 
   async function handleFinish() {
     const normalized = normalizeProfile(draft);
-    const profileId = activeProfileId ?? (normalized.id || crypto.randomUUID());
+    const profileId = isNewProfileMode ? crypto.randomUUID() : activeProfileId ?? crypto.randomUUID();
     const profile: UserProfile = {
       ...normalized,
       id:        profileId,
+      createdAt: normalized.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    if (!activeProfileId) {
+    if (isNewProfileMode || !activeProfileId) {
       setPendingProfile(profile);
       return;
     }
@@ -155,11 +199,10 @@ export function OnboardingWizard() {
     if (!ok) return;
     reset();
     resetAccounting();
-    setDraft({ ...DEFAULT_PROFILE, id: "", createdAt: "", updatedAt: "" });
+    setDraft(isNewProfileMode ? createBlankProfile() : normalizeProfile({ ...useProfileStore.getState().profile }));
     setStep(0);
   }
 
-  const progress = ((step + 1) / STEPS.length) * 100;
 
   // Label personnalisé dès que prénom/nom saisis
   const holderLabel = fullName(draft.holder.firstName, draft.holder.lastName, "Vous");

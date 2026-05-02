@@ -8,9 +8,9 @@
 //   2026-04-28 | KREMER Régis | Phase 7 — UI premium dark
 //   2026-04-29 | KREMER Régis | Correction contraste clair/sombre
 //   2026-04-30 | KREMER Régis | Phase 10 — tokens CSS complets, typography Geist
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
 // =============================================================================
 
-import { clsx } from "clsx";
 import type { AlertLevel } from "../../types/simulation";
 
 interface Cfg {

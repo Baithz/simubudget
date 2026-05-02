@@ -20,6 +20,7 @@
 //   2026-05-01 | KREMER Régis | Phase 13 — onglet enveloppes budgétaires
 //   2026-05-01 | KREMER Régis | Phase 13B — pédagogie et aide UX méthode enveloppes
 //   2026-05-01 | KREMER Régis | Phase 13C.3 — création explicite des enveloppes et liaison dépenses
+//   2026-05-02 | KREMER Régis | Ajout rapide de dépense depuis chaque catégorie affichée
 // =============================================================================
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -730,6 +731,20 @@ function DépensesTab({ store, isCouple, personName, partnerName }: {
     setRealForm({ label: "", category: "other", amount: 0, isFixed: false, isMandatory: false, owner: "me" });
   }
 
+  function openQuickExpense(category: ExpenseCategory) {
+    setShowPlannedForm(false);
+    setRealForm({
+      label: "",
+      category,
+      amount: 0,
+      isFixed: false,
+      isMandatory: false,
+      owner: "me",
+    });
+    setShowRealForm(true);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "smooth" }));
+  }
+
   return (
     <div className="space-y-4">
       <Toolbar title="Dépenses du mois" action="Ajouter une dépense réelle" onAction={() => setShowRealForm(true)} secondaryAction="Nouvelle charge récurrente" onSecondaryAction={() => setShowPlannedForm(true)} />
@@ -745,7 +760,19 @@ function DépensesTab({ store, isCouple, personName, partnerName }: {
                 <div className="flex items-center gap-3">
                   <span className="w-3 h-3 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[group.category] }} />
                   <div>
-                    <p className="font-bold text-ink-primary">{CATEGORY_LABELS[group.category]}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-ink-primary">{CATEGORY_LABELS[group.category]}</p>
+                      <button
+                        type="button"
+                        className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-black transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[var(--brand-soft)]"
+                        style={{ background: "var(--brand-soft)", border: "1px solid var(--border-brand)", color: "var(--brand-1)" }}
+                        title={`Ajouter une dépense ${CATEGORY_LABELS[group.category]}`}
+                        aria-label={`Ajouter une dépense dans ${CATEGORY_LABELS[group.category]}`}
+                        onClick={() => openQuickExpense(group.category)}
+                      >
+                        +
+                      </button>
+                    </div>
                     <p className="text-xs text-ink-muted">{group.items.length} ligne(s)</p>
                   </div>
                 </div>

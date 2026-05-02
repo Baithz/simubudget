@@ -9,6 +9,7 @@
 //   2026-05-01 | KREMER Régis | ZIP 7.1 — verrouillage PIN session et type de foyer
 //   2026-05-01 | KREMER Régis | ZIP 7.2 — libellés couple et initiales foyer
 //   2026-05-01 | KREMER Régis | ZIP 7.3 — libellés complets titulaire + partenaire
+//   2026-05-02 | KREMER Régis | Correction Phase 14.1 — suppression profils et arrêt du profil exemple automatique
 // =============================================================================
 
 import { create } from "zustand";
@@ -157,6 +158,17 @@ function randomColor(seed: string): string {
   return AVATAR_COLORS[total % AVATAR_COLORS.length] ?? AVATAR_COLORS[0];
 }
 
+
+function isTemplateProfile(profile: UserProfile | null): boolean {
+  if (!profile) return false;
+  const hasName = Boolean(`${profile.holder?.firstName ?? ""}${profile.holder?.lastName ?? ""}`.trim());
+  return !hasName
+    && profile.city === "Lyon"
+    && profile.department === "69"
+    && profile.salaryNet === 1800
+    && profile.currentHousing.rent === 650;
+}
+
 function readLegacyProfile(): UserProfile | null {
   const raw = localStorage.getItem("simubudget-profile");
   if (!raw) return null;
@@ -170,7 +182,7 @@ function readLegacyProfile(): UserProfile | null {
 
 function buildDefaultEntry(): ProfileEntry | null {
   const legacyProfile = readLegacyProfile();
-  if (!legacyProfile) return null;
+  if (!legacyProfile || isTemplateProfile(legacyProfile)) return null;
   const displayName = parseProfileName(legacyProfile);
   return {
     id: DEFAULT_PROFILE_ID,

@@ -8,6 +8,7 @@
 //   2026-04-28 | KREMER Regis | Correction TS strict - GoalForm initialGoal IIFE guard strict
 //   2026-04-28 | KREMER Regis | Phase 7 - actions cliquables, analyse depenses non-essentielles
 //   2026-05-01 | KREMER Régis | Patch 8.1 — stabilité interactions objectifs
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
 // =============================================================================
 
 import { useState } from "react";
@@ -46,7 +47,7 @@ const GOAL_PRESETS = [
 // ── Analyse des dépenses optimisables ─────────────────────────────────────────
 function analyzeOptimizable(
   expenses: ExpenseLine[],
-  targetMonthly: number,
+  _targetMonthly: number,
 ): {
   totalOptimizable: number;
   items: { label: string; category: string; current: number; suggested: number; saving: number }[];

@@ -7,6 +7,7 @@
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-04-26 | KREMER Regis | Creation du fichier Phase 4
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
 // =============================================================================
 
 import type { ExpenseCategory } from "@/types/accounting";
@@ -286,7 +287,7 @@ function splitCSVLine(line: string, sep: string): string[] {
 /** Convertit les transactions importees en lignes de depenses pour le store */
 export function transactionsToExpenses(
   transactions: BankTransaction[],
-  monthFilter?: string,
+  _monthFilter?: string,
 ): Array<{
   label:       string;
   category:    ExpenseCategory;

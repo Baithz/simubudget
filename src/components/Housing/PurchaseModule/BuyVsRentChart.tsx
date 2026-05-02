@@ -7,13 +7,14 @@
 //   2026-04-26 | KREMER Régis | Création du fichier Phase 2
 //   2026-04-30 | KREMER Régis | Phase 10 — tokens CSS, zéro couleur hardcodée, accents
 //   2026-05-01 | KREMER Régis | Phase 11 — Fix 6 : formatYears pluriel conditionnel
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
 // =============================================================================
 
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ResponsiveContainer, Legend,
 } from "recharts";
-import { formatEur , formatYears } from "@/utils/formatCurrency";
+import { formatEur } from "@/utils/formatCurrency";
 import type { PurchaseResult } from "@/types/purchase";
 
 interface DataPoint {

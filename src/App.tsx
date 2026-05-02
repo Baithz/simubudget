@@ -16,9 +16,11 @@
 //   2026-05-01 | KREMER Régis | ZIP 7 - navigation, aide utilisateur et actions profil
 //   2026-05-01 | KREMER Régis | ZIP 7.2 — affichage sidebar adapté aux profils couple
 //   2026-05-01 | KREMER Régis | Phase 13 — vérification MAJ automatique au démarrage (3s delay)
+//   2026-05-02 | KREMER Régis | Correction UX — retour automatique en haut à chaque changement de page
+//   2026-05-02 | KREMER Régis | Correction Phase 14.1 — lancement sans profil exemple et scroll du conteneur principal
 // =============================================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Outlet, NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -160,6 +162,7 @@ export default function App() {
   const activeProfileId = useProfileListStore((state) => state.activeProfileId);
   const lockProfile     = useProfileListStore((state) => state.lock);
   const [collapsed, setCollapsed] = useState(false);
+  const mainRef = useRef<HTMLElement | null>(null);
 
   // ── Mise à jour automatique au démarrage (checkOnMount = true) ────────────
   const { status: updateStatus, updateInfo, progress: updateProgress, error: updateError, installUpdate, dismiss } = useUpdater(true);
@@ -187,7 +190,12 @@ export default function App() {
   useEffect(() => {
     if (location.pathname === "/profiles") return;
     if (location.pathname === "/onboarding" && !activeProfileId) return;
-    if (profiles.length === 0) return;
+
+    if (profiles.length === 0) {
+      sessionStorage.removeItem(PROFILE_SESSION_KEY);
+      navigate("/onboarding?new=1", { replace: true });
+      return;
+    }
 
     const sessionProfileId = sessionStorage.getItem(PROFILE_SESSION_KEY);
     const hasSelectedProfileThisSession = activeProfileId !== null && sessionProfileId === activeProfileId;
@@ -200,6 +208,11 @@ export default function App() {
   useEffect(() => {
     if (!profile) void loadProfile();
   }, [loadProfile, profile]);
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location.pathname]);
 
   const currentPage = useMemo(() =>
     NAV.flatMap((s) => s.items).find((item) =>
@@ -384,7 +397,7 @@ export default function App() {
           </NavLink>
           {!collapsed && (
             <p className="px-2 pt-1 text-[10px] font-semibold" style={{ color: "var(--text-placeholder)" }}>
-              v2.0.1
+              v2.0.2
             </p>
           )}
         </div>
@@ -451,7 +464,7 @@ export default function App() {
         </header>
 
         {/* Zone de contenu */}
-        <main className="min-h-0 flex-1 overflow-auto" style={{ background: "var(--bg-base)" }}>
+        <main ref={mainRef} className="min-h-0 flex-1 overflow-auto" style={{ background: "var(--bg-base)" }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}

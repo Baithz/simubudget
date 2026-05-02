@@ -11,6 +11,8 @@
 //   2026-05-01 | KREMER Régis | ZIP 7 — simplification hero sans répétition baseline
 //   2026-05-01 | KREMER Régis | ZIP 7.1 — PIN requis à chaque sélection et badge foyer
 //   2026-05-01 | KREMER Régis | ZIP 7.3 — affichage complet des profils couple
+//   2026-05-02 | KREMER Régis | Ajout suppression profil depuis le sélecteur et création sans reprise active
+//   2026-05-02 | KREMER Régis | Correction Phase 14.1 — carte profil sans bouton imbriqué et création forcée vierge
 // =============================================================================
 
 import { useEffect, useState } from "react";
@@ -80,6 +82,7 @@ export function ProfileSelector() {
   const setActive = useProfileListStore((state) => state.setActive);
   const clearActive = useProfileListStore((state) => state.clearActive);
   const unlock = useProfileListStore((state) => state.unlock);
+  const removeProfile = useProfileListStore((state) => state.removeProfile);
   const getLockSeconds = useProfileListStore((state) => state.getLockSeconds);
   const [pinProfile, setPinProfile] = useState<ProfileEntry | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
@@ -131,8 +134,21 @@ export function ProfileSelector() {
   function createProfile() {
     sessionStorage.removeItem(PROFILE_SESSION_KEY);
     clearActive();
+    useProfileStore.getState().reset();
     refreshScopedStores();
-    navigate("/onboarding");
+    navigate("/onboarding?new=1", { replace: true });
+  }
+
+  function deleteProfile(profile: ProfileEntry) {
+    const label = profileCardDisplayName(profile);
+    const ok = window.confirm(`Supprimer le profil "${label}" et toutes ses données locales ?`);
+    if (!ok) return;
+    removeProfile(profile.id);
+    if (profile.id === activeProfileId) {
+      sessionStorage.removeItem(PROFILE_SESSION_KEY);
+      useProfileStore.getState().reset();
+      refreshScopedStores();
+    }
   }
 
   if (pinProfile) {
@@ -185,6 +201,7 @@ export function ProfileSelector() {
               isSelected={profile.id === selectedProfileId}
               disabled={selectedProfileId !== null}
               onClick={() => void selectProfile(profile)}
+              onDelete={() => deleteProfile(profile)}
             />
           ))}
           <motion.button
@@ -212,9 +229,10 @@ interface ProfileCardProps {
   isSelected: boolean;
   disabled: boolean;
   onClick: () => void;
+  onDelete: () => void;
 }
 
-function ProfileCard({ profile, isActive, isSelected, disabled, onClick }: ProfileCardProps) {
+function ProfileCard({ profile, isActive, isSelected, disabled, onClick, onDelete }: ProfileCardProps) {
   const locked = profile.pinHash !== null;
   const cardDisplayName = profileCardDisplayName(profile);
   const kindLabel = profile.profileKind === "couple" ? "Couple" : profile.profileKind === "cohabiting" ? "Colocation" : profile.profileKind === "separated" ? "Séparé" : "Solo";
@@ -226,49 +244,67 @@ function ProfileCard({ profile, isActive, isSelected, disabled, onClick }: Profi
       };
 
   return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
+    <motion.div
       variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
       {...animationProps}
-      className="group relative flex min-h-[232px] flex-col items-center justify-center overflow-hidden rounded-[32px] p-6 text-center transition focus:outline-none focus:ring-4 focus:ring-[var(--brand-soft)] disabled:cursor-wait disabled:opacity-80"
+      className="group relative min-h-[232px] overflow-hidden rounded-[32px] text-center transition focus-within:ring-4 focus-within:ring-[var(--brand-soft)]"
       style={{ background: "var(--bg-surface)", border: isActive ? "1px solid var(--border-brand)" : "1px solid var(--border)", boxShadow: isActive ? "var(--shadow-glow)" : "var(--shadow-soft)" }}
     >
-      <span className="pointer-events-none absolute inset-x-0 top-0 h-1" style={{ background: isActive ? "var(--gradient-brand)" : "transparent" }} />
-      <span className="absolute right-4 top-4 rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.18em]" style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
-        {locked ? "PIN" : "Libre"}
-      </span>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className="flex min-h-[232px] w-full flex-col items-center justify-center p-6 disabled:cursor-wait disabled:opacity-80"
+      >
+        <span className="pointer-events-none absolute inset-x-0 top-0 h-1" style={{ background: isActive ? "var(--gradient-brand)" : "transparent" }} />
+        <span className="absolute right-4 top-4 rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.18em]" style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
+          {locked ? "PIN" : "Libre"}
+        </span>
 
-      <span className="relative mb-4 flex h-20 w-20 items-center justify-center rounded-[30px] text-2xl font-extrabold text-white shadow-lg transition group-hover:scale-105" style={{ background: profile.avatarColor }}>
-        {profile.avatarInitials}
-        <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full" style={{ background: isActive ? "var(--fin-green)" : "var(--bg-surface-3)", border: "3px solid var(--bg-surface)" }} />
-      </span>
+        <span className="relative mb-4 flex h-20 w-20 items-center justify-center rounded-[30px] text-2xl font-extrabold text-white shadow-lg transition group-hover:scale-105" style={{ background: profile.avatarColor }}>
+          {profile.avatarInitials}
+          <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full" style={{ background: isActive ? "var(--fin-green)" : "var(--bg-surface-3)", border: "3px solid var(--bg-surface)" }} />
+        </span>
 
-      <span className="font-display text-xl font-extrabold text-ink-primary">{cardDisplayName}</span>
-      <span className="mt-2 text-sm font-semibold text-ink-muted">Dernier usage : {formatProfileLastUsed(profile.lastUsed)}</span>
+        <span className="font-display text-xl font-extrabold text-ink-primary">{cardDisplayName}</span>
+        <span className="mt-2 text-sm font-semibold text-ink-muted">Dernier usage : {formatProfileLastUsed(profile.lastUsed)}</span>
 
-      <div className="mt-4 flex flex-wrap justify-center gap-2">
-        {isActive && <Badge label="Actif" tone="brand" />}
-        <Badge label={kindLabel} tone="muted" />
-        {locked && <Badge label="Protégé" tone="muted" />}
-      </div>
+        <span className="mt-4 flex flex-wrap justify-center gap-2">
+          {isActive && <Badge label="Actif" tone="brand" />}
+          <Badge label={kindLabel} tone="muted" />
+          {locked && <Badge label="Protégé" tone="muted" />}
+        </span>
 
-      <AnimatePresence>
-        {isSelected && (
-          <motion.span
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 6 }}
-            className="mt-4 inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-extrabold"
-            style={{ background: "var(--brand-soft)", color: "var(--brand-1)", border: "1px solid var(--border-brand)" }}
-          >
-            <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: "var(--brand-1)" }} />
-            Ouverture du profil…
-          </motion.span>
-        )}
-      </AnimatePresence>
-    </motion.button>
+        <AnimatePresence>
+          {isSelected && (
+            <motion.span
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              className="mt-4 inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-extrabold"
+              style={{ background: "var(--brand-soft)", color: "var(--brand-1)", border: "1px solid var(--border-brand)" }}
+            >
+              <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: "var(--brand-1)" }} />
+              Ouverture du profil…
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </button>
+
+      <button
+        type="button"
+        aria-label={`Supprimer le profil ${cardDisplayName}`}
+        title="Supprimer ce profil"
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete();
+        }}
+        className="absolute right-4 top-14 flex h-8 w-8 items-center justify-center rounded-full text-sm font-black transition hover:scale-105 focus:outline-none focus:ring-4 focus:ring-[var(--fin-red-bg)]"
+        style={{ background: "var(--fin-red-bg)", border: "1px solid var(--fin-red-border)", color: "var(--fin-red)" }}
+      >
+        ×
+      </button>
+    </motion.div>
   );
 }
 

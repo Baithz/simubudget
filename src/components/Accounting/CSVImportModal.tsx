@@ -5,10 +5,11 @@
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-04-26 | KREMER Regis | Creation du fichier Phase 4
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
 // =============================================================================
 
 import { useState, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { clsx } from "clsx";
 import { parseCSV, transactionsToExpenses } from "../../services/csvImport";
 import { useAccountingStore } from "@/store/accountingStore";
@@ -45,7 +46,7 @@ export function CSVImportModal({ onClose }: Props) {
         const parsed = parseCSV(content);
         setResult(parsed);
         setStep("preview");
-      } catch (err) {
+      } catch (_err) {
         setError("Impossible de lire ce fichier. Vérifiez qu'il s'agit d'un export CSV bancaire.");
       }
     };

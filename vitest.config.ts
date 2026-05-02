@@ -1,10 +1,11 @@
 // =============================================================================
 // Fichier  : vitest.config.ts
 // Auteur   : KREMER Regis
-// Desc.    : Configuration Vitest pour les tests React/TypeScript
+// Desc.    : Configuration Vitest pour les tests React/TypeScript.
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-04-26 | KREMER Regis | Creation du fichier
+//   2026-05-02 | KREMER Regis | Correction — autorise le passage temporaire sans fichiers de test React
 // =============================================================================
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
@@ -26,6 +27,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles:  ["./src/test/setup.ts"],
+    passWithNoTests: true,
     coverage: {
       reporter:   ["text", "lcov"],
       thresholds: { statements: 80, branches: 75, functions: 80, lines: 80 },

@@ -9,6 +9,8 @@
 //   2026-04-28 | KREMER Regis | Correction TS strict - clearPartner sans undefined explicite
 //   2026-04-29 | KREMER Regis | Phase 9.2 - migration identites personne A/B
 //   2026-05-01 | KREMER Régis | Phase 12B — scope multi-profils du profil actif
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
+//   2026-05-02 | KREMER Régis | Correction Phase 14.1 — profil local initial vierge sans exemple Lucas/Lyon
 // =============================================================================
 
 import { create } from "zustand";
@@ -46,6 +48,31 @@ const newProfile = (): UserProfile => ({
   id:        generateId(),
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
+  holder:    { firstName: "", lastName: "" },
+  salaryNet: 0,
+  bonusAnnual: 0,
+  variableIncomeMin: 0,
+  variableIncomeMax: 0,
+  variableEnabled: false,
+  allocationsTotal: 0,
+  pensionReceived: 0,
+  rentalIncome: 0,
+  otherIncome: 0,
+  currentHousing: {
+    ...DEFAULT_PROFILE.currentHousing,
+    rent: 0,
+    charges: 0,
+    surface: 0,
+  },
+  credits: [],
+  phoneInternet: 0,
+  insuranceTotal: 0,
+  pensionPaid: 0,
+  otherFixed: 0,
+  savingsMonths: 0,
+  savingsGoals: [],
+  department: "",
+  city: "",
 });
 
 /** Migration : si un profil ancien a partnerSalaryNet mais pas partner, on convertit */
@@ -94,7 +121,7 @@ function migrateProfile(profile: UserProfile): UserProfile {
 
 export const useProfileStore = create<ProfileStore>()(
   persist(
-    (set, get) => ({
+    (set, _get) => ({
       profile:                { ...newProfile(), id: getActiveProfileId() },
       hasCompletedOnboarding: false,
 

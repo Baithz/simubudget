@@ -12,6 +12,7 @@
 //                               BuyVsRentChart branché, focus ring token
 //   2026-05-01 | KREMER Régis | ZIP 8 — Refonte simulation achat V2 : validation, UX guidée,
 //                               garde-fous de saisie et résultats professionnels
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
 // =============================================================================
 
 import { useEffect, useMemo } from "react";
@@ -26,7 +27,7 @@ import AlertBadge from "../../shared/AlertBadge";
 import DebtGauge from "./DebtGauge";
 import { BuyVsRentChart } from "./BuyVsRentChart";
 import { formatEur, formatPct, formatYears } from "../../../utils/formatCurrency";
-import type { PurchaseInput, PurchaseResult, PropertyCondition, PropertyType, PropertyUsage } from "../../../types/purchase";
+import type { PurchaseInput, PurchaseResult, PropertyCondition, PropertyType } from "../../../types/purchase";
 import type { UserProfile } from "../../../types/profile";
 
 const TABS = ["Bien", "Financement", "Aides", "Résultats", "Achat vs Location"];

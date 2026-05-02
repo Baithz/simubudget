@@ -14,41 +14,41 @@
 // =============================================================================
 
 import { useEffect, useState } from "react";
-import { useNavigate }        from "react-router-dom";
-import { motion }             from "framer-motion";
-import { clsx }               from "clsx";
-import { useProfileStore }    from "@/store/profileStore";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { clsx } from "clsx";
+import { useProfileStore } from "@/store/profileStore";
 import { useSimulationStore } from "@/store/simulationStore";
-import { usePurchaseStore }   from "@/store/purchaseStore";
+import { usePurchaseStore } from "@/store/purchaseStore";
 import { useAccountingStore } from "@/store/accountingStore";
-import { useCalculator }      from "@/hooks/useCalculator";
-import { formatEur }          from "@/utils/formatCurrency";
-import { openExternal }       from "@/utils/openExternal";
+import { useCalculator } from "@/hooks/useCalculator";
+import { formatEur } from "@/utils/formatCurrency";
+import { openExternal } from "@/utils/openExternal";
 import type { Alert, Recommendation } from "@/types/simulation";
 import type { AccountingRecommendation } from "@/types/accounting";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface AllRec {
-  id:       string;
+  id: string;
   priority: number;
-  title:    string;
-  detail:   string;
-  saving?:  number;
-  action?:  string;
+  title: string;
+  detail: string;
+  saving?: number;
+  action?: string;
   impactLabel?: string;
-  source:   "budget" | "accounting" | "purchase";
-  level:    "critical" | "danger" | "vigilance" | "info" | "conseil";
+  source: "budget" | "accounting" | "purchase";
+  level: "critical" | "danger" | "vigilance" | "info" | "conseil";
 }
 
 // ─── Config niveaux — 100 % tokens CSS ───────────────────────────────────────
 
 interface LevelCfg {
-  bgVar:     string;
+  bgVar: string;
   borderVar: string;
-  colorVar:  string;
-  label:     string;
-  icon:      React.ReactElement;
+  colorVar: string;
+  label: string;
+  icon: React.ReactElement;
 }
 
 function mkSvg(path: string): React.ReactElement {
@@ -59,30 +59,77 @@ function mkSvg(path: string): React.ReactElement {
   );
 }
 
-const WARN = "M6.148 1.584a1 1 0 0 1 1.704 0l5.5 9A1 1 0 0 1 12.5 12H1.5a1 1 0 0 1-.852-1.416l5.5-9ZM7 5.25a.75.75 0 0 0-1.5 0v2.5a.75.75 0 0 0 1.5 0v-2.5ZM7 9.75a.875.875 0 1 0 0 1.75.875.875 0 0 0 0-1.75Z";
-const INFO = "M7 1a6 6 0 1 0 0 12A6 6 0 0 0 7 1ZM6.25 5.5a.75.75 0 0 1 1.5 0v4a.75.75 0 0 1-1.5 0v-4ZM7 3a.875.875 0 1 1 0 1.75A.875.875 0 0 1 7 3Z";
-const OK   = "M7 1a6 6 0 1 0 0 12A6 6 0 0 0 7 1Zm2.78 4.72a.75.75 0 0 0-1.06-1.06L5.97 7.41l-.69-.69a.75.75 0 0 0-1.06 1.06l1.22 1.22a.75.75 0 0 0 1.06 0l3.28-3.28Z";
-const CIRC = "M7 1a6 6 0 1 0 0 12A6 6 0 0 0 7 1ZM6.25 4.25a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-1.5 0v-3.5ZM7 9.5a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Z";
+const WARN =
+  "M6.148 1.584a1 1 0 0 1 1.704 0l5.5 9A1 1 0 0 1 12.5 12H1.5a1 1 0 0 1-.852-1.416l5.5-9ZM7 5.25a.75.75 0 0 0-1.5 0v2.5a.75.75 0 0 0 1.5 0v-2.5ZM7 9.75a.875.875 0 1 0 0 1.75.875.875 0 0 0 0-1.75Z";
+const INFO =
+  "M7 1a6 6 0 1 0 0 12A6 6 0 0 0 7 1ZM6.25 5.5a.75.75 0 0 1 1.5 0v4a.75.75 0 0 1-1.5 0v-4ZM7 3a.875.875 0 1 1 0 1.75A.875.875 0 0 1 7 3Z";
+const OK =
+  "M7 1a6 6 0 1 0 0 12A6 6 0 0 0 7 1Zm2.78 4.72a.75.75 0 0 0-1.06-1.06L5.97 7.41l-.69-.69a.75.75 0 0 0-1.06 1.06l1.22 1.22a.75.75 0 0 0 1.06 0l3.28-3.28Z";
+const CIRC =
+  "M7 1a6 6 0 1 0 0 12A6 6 0 0 0 7 1ZM6.25 4.25a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-1.5 0v-3.5ZM7 9.5a.875.875 0 1 1 0 1.75.875.875 0 0 1 0-1.75Z";
 
 const LEVEL_CFG: Record<AllRec["level"], LevelCfg> = {
-  critical:  { bgVar: "--fin-red-bg",    borderVar: "--fin-red-border",    colorVar: "--fin-red",    label: "CRITIQUE",  icon: mkSvg(WARN) },
-  danger:    { bgVar: "--fin-red-bg",    borderVar: "--fin-red-border",    colorVar: "--fin-red",    label: "DANGER",    icon: mkSvg(WARN) },
-  vigilance: { bgVar: "--fin-amber-bg",  borderVar: "--fin-amber-border",  colorVar: "--fin-amber",  label: "VIGILANCE", icon: mkSvg(CIRC) },
-  info:      { bgVar: "--fin-blue-bg",   borderVar: "--fin-blue-border",   colorVar: "--fin-blue",   label: "INFO",      icon: mkSvg(INFO) },
-  conseil:   { bgVar: "--fin-green-bg",  borderVar: "--fin-green-border",  colorVar: "--fin-green",  label: "CONSEIL",   icon: mkSvg(OK)   },
+  critical: {
+    bgVar: "--fin-red-bg",
+    borderVar: "--fin-red-border",
+    colorVar: "--fin-red",
+    label: "CRITIQUE",
+    icon: mkSvg(WARN),
+  },
+  danger: {
+    bgVar: "--fin-red-bg",
+    borderVar: "--fin-red-border",
+    colorVar: "--fin-red",
+    label: "DANGER",
+    icon: mkSvg(WARN),
+  },
+  vigilance: {
+    bgVar: "--fin-amber-bg",
+    borderVar: "--fin-amber-border",
+    colorVar: "--fin-amber",
+    label: "VIGILANCE",
+    icon: mkSvg(CIRC),
+  },
+  info: {
+    bgVar: "--fin-blue-bg",
+    borderVar: "--fin-blue-border",
+    colorVar: "--fin-blue",
+    label: "INFO",
+    icon: mkSvg(INFO),
+  },
+  conseil: {
+    bgVar: "--fin-green-bg",
+    borderVar: "--fin-green-border",
+    colorVar: "--fin-green",
+    label: "CONSEIL",
+    icon: mkSvg(OK),
+  },
 };
 
 const SITUATION_CFG = {
-  critical:  { label: "Critique",                     colorVar: "--fin-red"   },
-  danger:    { label: "Attention requise",             colorVar: "--fin-red"   },
+  critical: { label: "Critique", colorVar: "--fin-red" },
+  danger: { label: "Attention requise", colorVar: "--fin-red" },
   vigilance: { label: "Quelques points à surveiller", colorVar: "--fin-amber" },
-  ok:        { label: "Situation saine",               colorVar: "--fin-green" },
+  ok: { label: "Situation saine", colorVar: "--fin-green" },
 };
 
 // ─── Helper makeRec ──────────────────────────────────────────────────────────
 
-function makeRec(p: Omit<AllRec, "saving" | "action" | "impactLabel"> & { saving?: number; action?: string; impactLabel?: string }): AllRec {
-  const r: AllRec = { id: p.id, priority: p.priority, title: p.title, detail: p.detail, source: p.source, level: p.level };
+function makeRec(
+  p: Omit<AllRec, "saving" | "action" | "impactLabel"> & {
+    saving?: number;
+    action?: string;
+    impactLabel?: string;
+  }
+): AllRec {
+  const r: AllRec = {
+    id: p.id,
+    priority: p.priority,
+    title: p.title,
+    detail: p.detail,
+    source: p.source,
+    level: p.level,
+  };
   if (p.saving !== undefined) r.saving = p.saving;
   if (p.action !== undefined) r.action = p.action;
   if (p.impactLabel !== undefined) r.impactLabel = p.impactLabel;
@@ -92,19 +139,18 @@ function makeRec(p: Omit<AllRec, "saving" | "action" | "impactLabel"> & { saving
 // ─── Composant principal ─────────────────────────────────────────────────────
 
 export default function AdvisorPanel() {
-  const navigate        = useNavigate();
-  const profile         = useProfileStore((s) => s.profile);
-  const result          = useSimulationStore((s) => s.result);
-  const purchaseResult  = usePurchaseStore((s) => s.result);
-  const { calculate }   = useCalculator();
-  const accountingRecs  = useAccountingStore((s) => s.getRecommendations());
+  const navigate = useNavigate();
+  const profile = useProfileStore((s) => s.profile);
+  const result = useSimulationStore((s) => s.result);
+  const purchaseResult = usePurchaseStore((s) => s.result);
+  const { calculate } = useCalculator();
+  const accountingRecs = useAccountingStore((s) => s.getRecommendations());
 
-  const [filter,   setFilter]   = useState<"all" | AllRec["level"]>("all");
+  const [filter, setFilter] = useState<"all" | AllRec["level"]>("all");
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile && !result) calculate(profile);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
   if (!profile) {
@@ -113,7 +159,11 @@ export default function AdvisorPanel() {
         <p className="text-lg mb-2 font-semibold" style={{ color: "var(--text-secondary)" }}>
           Aucun profil configuré.
         </p>
-        <a href="#/onboarding" className="text-sm font-bold underline" style={{ color: "var(--brand-1)" }}>
+        <a
+          href="#/onboarding"
+          className="text-sm font-bold underline"
+          style={{ color: "var(--brand-1)" }}
+        >
           Créer mon profil
         </a>
       </div>
@@ -127,9 +177,19 @@ export default function AdvisorPanel() {
   if (result?.recommendations) {
     result.recommendations.forEach((rec: Recommendation) => {
       const r: Parameters<typeof makeRec>[0] = {
-        id: rec.id, priority: rec.priority, title: rec.label, detail: rec.impact,
+        id: rec.id,
+        priority: rec.priority,
+        title: rec.label,
+        detail: rec.impact,
         source: "budget",
-        level:  rec.priority <= 2 ? "critical" : rec.priority <= 3 ? "danger" : rec.priority <= 4 ? "vigilance" : "conseil",
+        level:
+          rec.priority <= 2
+            ? "critical"
+            : rec.priority <= 3
+              ? "danger"
+              : rec.priority <= 4
+                ? "vigilance"
+                : "conseil",
       };
       if (rec.action !== undefined) r.action = rec.action;
       allRecs.push(makeRec(r));
@@ -139,8 +199,19 @@ export default function AdvisorPanel() {
   accountingRecs.forEach((rec: AccountingRecommendation) => {
     const r: Parameters<typeof makeRec>[0] = {
       id: rec.id + "_acc",
-      priority: rec.priority ?? (rec.level === "critical" ? 1 : rec.level === "danger" ? 2 : rec.level === "vigilance" ? 3 : 5),
-      title: rec.title, detail: rec.detail, source: "accounting", level: rec.level,
+      priority:
+        rec.priority ??
+        (rec.level === "critical"
+          ? 1
+          : rec.level === "danger"
+            ? 2
+            : rec.level === "vigilance"
+              ? 3
+              : 5),
+      title: rec.title,
+      detail: rec.detail,
+      source: "accounting",
+      level: rec.level,
     };
     if (rec.saving !== undefined) r.saving = rec.saving;
     if (rec.action !== undefined) r.action = rec.action;
@@ -154,8 +225,12 @@ export default function AdvisorPanel() {
       .forEach((a: Alert) => {
         if (!allRecs.find((r) => r.id === a.id)) {
           const r: Parameters<typeof makeRec>[0] = {
-            id: a.id + "_alert", priority: a.level === "critical" ? 0 : 1,
-            title: a.message, detail: a.detail ?? "", source: "budget", level: a.level as AllRec["level"],
+            id: a.id + "_alert",
+            priority: a.level === "critical" ? 0 : 1,
+            title: a.message,
+            detail: a.detail ?? "",
+            source: "budget",
+            level: a.level as AllRec["level"],
           };
           if (a.action !== undefined) r.action = a.action;
           allRecs.push(makeRec(r));
@@ -165,46 +240,64 @@ export default function AdvisorPanel() {
 
   if (purchaseResult) {
     if (purchaseResult.debtRatioPostPurchase > 0.35) {
-      allRecs.push(makeRec({
-        id: "PA001", priority: 2, source: "purchase", level: "danger",
-        title:  "Taux d'endettement achat dépasse le plafond HCSF",
-        detail: `Votre taux d'endettement post-achat serait de ${(purchaseResult.debtRatioPostPurchase * 100).toFixed(1)} %.`,
-        action: "Augmentez l'apport de 10 000 € ou allongez la durée de 5 ans.",
-      }));
+      allRecs.push(
+        makeRec({
+          id: "PA001",
+          priority: 2,
+          source: "purchase",
+          level: "danger",
+          title: "Taux d'endettement achat dépasse le plafond HCSF",
+          detail: `Votre taux d'endettement post-achat serait de ${(purchaseResult.debtRatioPostPurchase * 100).toFixed(1)} %.`,
+          action: "Augmentez l'apport de 10 000 € ou allongez la durée de 5 ans.",
+        })
+      );
     }
     if (purchaseResult.ptz.eligible && purchaseResult.ptz.amount) {
-      allRecs.push(makeRec({
-        id: "PA002", priority: 4, source: "purchase", level: "info",
-        title:  `PTZ éligible — ${formatEur(purchaseResult.ptz.amount)} sans intérêts`,
-        detail: "Vous êtes éligible au Prêt à Taux Zéro. Cela réduit votre mensualité pendant le différé.",
-        action: "Simulez avec PTZ dans le module Achat pour voir l'impact complet.",
-      }));
+      allRecs.push(
+        makeRec({
+          id: "PA002",
+          priority: 4,
+          source: "purchase",
+          level: "info",
+          title: `PTZ éligible — ${formatEur(purchaseResult.ptz.amount)} sans intérêts`,
+          detail:
+            "Vous êtes éligible au Prêt à Taux Zéro. Cela réduit votre mensualité pendant le différé.",
+          action: "Simulez avec PTZ dans le module Achat pour voir l'impact complet.",
+        })
+      );
     }
   }
 
   // Dédoublonner + trier
-  const seen   = new Set<string>();
+  const seen = new Set<string>();
   const unique = allRecs
-    .filter((r) => { if (seen.has(r.id)) return false; seen.add(r.id); return true; })
+    .filter((r) => {
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    })
     .sort((a, b) => a.priority - b.priority);
 
   const filtered = filter === "all" ? unique : unique.filter((r) => r.level === filter);
 
   const counts = {
-    all:       unique.length,
-    critical:  unique.filter((r) => r.level === "critical").length,
-    danger:    unique.filter((r) => r.level === "danger").length,
+    all: unique.length,
+    critical: unique.filter((r) => r.level === "critical").length,
+    danger: unique.filter((r) => r.level === "danger").length,
     vigilance: unique.filter((r) => r.level === "vigilance").length,
-    info:      unique.filter((r) => r.level === "info").length,
-    conseil:   unique.filter((r) => r.level === "conseil").length,
+    info: unique.filter((r) => r.level === "info").length,
+    conseil: unique.filter((r) => r.level === "conseil").length,
   };
   const criticalCount = counts.critical + counts.danger;
 
   const sitKey: keyof typeof SITUATION_CFG =
-    counts.critical > 0  ? "critical"
-    : counts.danger > 0  ? "danger"
-    : counts.vigilance > 0 ? "vigilance"
-    : "ok";
+    counts.critical > 0
+      ? "critical"
+      : counts.danger > 0
+        ? "danger"
+        : counts.vigilance > 0
+          ? "vigilance"
+          : "ok";
   const sit = SITUATION_CFG[sitKey];
 
   // ─── Rendu ──────────────────────────────────────────────────────────────
@@ -228,7 +321,10 @@ export default function AdvisorPanel() {
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+            <p
+              className="text-xs font-bold uppercase tracking-widest"
+              style={{ color: "var(--text-muted)" }}
+            >
               Situation globale
             </p>
             <p className="text-xl font-bold mt-1" style={{ color: `var(${sit.colorVar})` }}>
@@ -237,11 +333,18 @@ export default function AdvisorPanel() {
           </div>
           {result && (
             <div className="text-right">
-              <p className="text-3xl font-bold font-mono tabular-nums" style={{ color: "var(--text-primary)" }}>
+              <p
+                className="text-3xl font-bold font-mono tabular-nums"
+                style={{ color: "var(--text-primary)" }}
+              >
                 {result.healthScore}
-                <span className="text-lg font-normal" style={{ color: "var(--text-muted)" }}>/100</span>
+                <span className="text-lg font-normal" style={{ color: "var(--text-muted)" }}>
+                  /100
+                </span>
               </p>
-              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Score SSF</p>
+              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                Score SSF
+              </p>
             </div>
           )}
         </div>
@@ -270,7 +373,7 @@ export default function AdvisorPanel() {
       <div className="flex flex-wrap gap-2">
         {(["all", "critical", "danger", "vigilance", "info", "conseil"] as const).map((f) => {
           const active = filter === f;
-          const cfg    = f !== "all" ? LEVEL_CFG[f] : null;
+          const cfg = f !== "all" ? LEVEL_CFG[f] : null;
           return (
             <button
               key={f}
@@ -278,16 +381,19 @@ export default function AdvisorPanel() {
               className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all border"
               style={
                 active
-                  ? { background: cfg ? `var(${cfg.bgVar})` : "var(--brand-glow)",
-                      color:      cfg ? `var(${cfg.colorVar})` : "var(--brand-1)",
-                      borderColor:cfg ? `var(${cfg.borderVar})` : "var(--border-brand)" }
-                  : { background: "var(--bg-surface)", color: "var(--text-muted)",
-                      borderColor: "var(--border)" }
+                  ? {
+                      background: cfg ? `var(${cfg.bgVar})` : "var(--brand-glow)",
+                      color: cfg ? `var(${cfg.colorVar})` : "var(--brand-1)",
+                      borderColor: cfg ? `var(${cfg.borderVar})` : "var(--border-brand)",
+                    }
+                  : {
+                      background: "var(--bg-surface)",
+                      color: "var(--text-muted)",
+                      borderColor: "var(--border)",
+                    }
               }
             >
-              {f === "all"
-                ? `Tout (${counts.all})`
-                : `${LEVEL_CFG[f].label} · ${counts[f]}`}
+              {f === "all" ? `Tout (${counts.all})` : `${LEVEL_CFG[f].label} · ${counts[f]}`}
             </button>
           );
         })}
@@ -301,7 +407,7 @@ export default function AdvisorPanel() {
       ) : (
         <div className="space-y-3">
           {filtered.map((rec, i) => {
-            const cfg    = LEVEL_CFG[rec.level];
+            const cfg = LEVEL_CFG[rec.level];
             const isOpen = expanded === rec.id;
             return (
               <motion.div
@@ -311,7 +417,7 @@ export default function AdvisorPanel() {
                 transition={{ delay: i * 0.04 }}
                 className="rounded-2xl border overflow-hidden"
                 style={{
-                  background:  `var(${cfg.bgVar})`,
+                  background: `var(${cfg.bgVar})`,
                   borderColor: `var(${cfg.borderVar})`,
                 }}
               >
@@ -330,8 +436,16 @@ export default function AdvisorPanel() {
                       >
                         {cfg.label}
                       </span>
-                      <span className="text-[10px] font-semibold" style={{ color: "var(--text-muted)" }}>
-                        · {rec.source === "budget" ? "Budget" : rec.source === "accounting" ? "Comptes" : "Achat"}
+                      <span
+                        className="text-[10px] font-semibold"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        ·{" "}
+                        {rec.source === "budget"
+                          ? "Budget"
+                          : rec.source === "accounting"
+                            ? "Comptes"
+                            : "Achat"}
                       </span>
                     </div>
                     <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -351,10 +465,17 @@ export default function AdvisorPanel() {
                   <svg
                     viewBox="0 0 20 20"
                     fill="currentColor"
-                    className={clsx("w-4 h-4 flex-shrink-0 mt-0.5 transition-transform", isOpen && "rotate-180")}
+                    className={clsx(
+                      "w-4 h-4 flex-shrink-0 mt-0.5 transition-transform",
+                      isOpen && "rotate-180"
+                    )}
                     style={{ color: "var(--text-muted)" }}
                   >
-                    <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd"/>
+                    <path
+                      fillRule="evenodd"
+                      d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
+                      clipRule="evenodd"
+                    />
                   </svg>
                 </button>
 
@@ -366,16 +487,25 @@ export default function AdvisorPanel() {
                     style={{ borderColor: "var(--border)" }}
                   >
                     {rec.detail && (
-                      <p className="text-xs font-medium leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                      <p
+                        className="text-xs font-medium leading-relaxed"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
                         {rec.detail}
                       </p>
                     )}
                     {rec.action && (
                       <div
                         className="rounded-xl p-3"
-                        style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}
+                        style={{
+                          background: "var(--bg-surface-2)",
+                          border: "1px solid var(--border)",
+                        }}
                       >
-                        <p className="text-xs font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                        <p
+                          className="text-xs font-bold mb-1"
+                          style={{ color: "var(--text-secondary)" }}
+                        >
                           Action concrète :
                         </p>
                         <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
@@ -395,7 +525,8 @@ export default function AdvisorPanel() {
       )}
 
       <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
-        Ces recommandations sont générées automatiquement. Elles ne constituent pas un conseil financier réglementé.
+        Ces recommandations sont générées automatiquement. Elles ne constituent pas un conseil
+        financier réglementé.
       </p>
     </div>
   );
@@ -432,13 +563,17 @@ function ActionButton({ action, navigate }: { action: string; navigate: (p: stri
   const t = action.toLowerCase();
   const externalUrl = externalUrlFromAction(action);
   const target =
-    t.includes("achat") || t.includes("immobilier") || t.includes("ptz") ? "/housing/purchase"
-    : t.includes("location") || t.includes("loyer") ? "/housing/location"
-    : t.includes("épargne") || t.includes("compte") || t.includes("dépens") ? "/accounting"
-    : t.includes("scénario") || t.includes("projection") ? "/scenarios"
-    : t.includes("profil") || t.includes("situation") ? "/onboarding"
-    : null;
-
+    t.includes("achat") || t.includes("immobilier") || t.includes("ptz")
+      ? "/housing/purchase"
+      : t.includes("location") || t.includes("loyer")
+        ? "/housing/location"
+        : t.includes("épargne") || t.includes("compte") || t.includes("dépens")
+          ? "/accounting"
+          : t.includes("scénario") || t.includes("projection")
+            ? "/scenarios"
+            : t.includes("profil") || t.includes("situation")
+              ? "/onboarding"
+              : null;
 
   if (externalUrl !== null) {
     return (
@@ -446,10 +581,23 @@ function ActionButton({ action, navigate }: { action: string; navigate: (p: stri
         type="button"
         onClick={() => void openExternal(externalUrl)}
         className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
-        style={{ background: "var(--fin-blue-bg)", color: "var(--fin-blue)", border: "1px solid var(--fin-blue-border)" }}
+        style={{
+          background: "var(--fin-blue-bg)",
+          color: "var(--fin-blue)",
+          border: "1px solid var(--fin-blue-border)",
+        }}
       >
-        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
-          <path d="M4.5 2H2.8A1.3 1.3 0 0 0 1.5 3.3v5.9a1.3 1.3 0 0 0 1.3 1.3h5.9A1.3 1.3 0 0 0 10 9.2V7.5" strokeLinecap="round" />
+        <svg
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          className="w-3 h-3"
+        >
+          <path
+            d="M4.5 2H2.8A1.3 1.3 0 0 0 1.5 3.3v5.9a1.3 1.3 0 0 0 1.3 1.3h5.9A1.3 1.3 0 0 0 10 9.2V7.5"
+            strokeLinecap="round"
+          />
           <path d="M7 1.5h3.5V5M5.5 6.5l4.7-4.7" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         Ouvrir la source officielle
@@ -462,10 +610,20 @@ function ActionButton({ action, navigate }: { action: string; navigate: (p: stri
       <button
         onClick={() => navigate(target)}
         className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
-        style={{ background: "var(--fin-green-bg)", color: "var(--fin-green)", border: "1px solid var(--fin-green-border)" }}
+        style={{
+          background: "var(--fin-green-bg)",
+          color: "var(--fin-green)",
+          border: "1px solid var(--fin-green-border)",
+        }}
       >
-        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
-          <path d="M1 6h9M6 2l4 4-4 4" strokeLinecap="round" strokeLinejoin="round"/>
+        <svg
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          className="w-3 h-3"
+        >
+          <path d="M1 6h9M6 2l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         {action}
       </button>

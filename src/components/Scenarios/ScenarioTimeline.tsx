@@ -6,6 +6,7 @@
 // Changelog :
 //   2026-04-26 | KREMER Regis | Creation du fichier Phase 2
 //   2026-04-29 | KREMER Régis | Refonte Phase 8 - wrapper premium fluide
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
 // =============================================================================
 
 import { useEffect, useState } from "react";
@@ -13,7 +14,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ReferenceLine, ResponsiveContainer, Legend,
+  Tooltip, ReferenceLine, ResponsiveContainer,
 } from "recharts";
 import { useScenarioStore } from "@/store/scenarioStore";
 import { useProjection }    from "@/hooks/useProjection";
@@ -313,7 +314,7 @@ export function ScenarioTimeline() {
 
 // ── Bouton de selection d'événement ────────────────────────────────────────
 function EventPickerButton({
-  type, preset, onSelect,
+  type: _type, preset, onSelect,
 }: {
   type: ScenarioType;
   preset: typeof SCENARIO_PRESETS[ScenarioType];

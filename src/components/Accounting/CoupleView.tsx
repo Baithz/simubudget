@@ -7,13 +7,14 @@
 //   2026-04-27 | KREMER Regis | Creation Phase 6
 //   2026-04-28 | KREMER Regis | Correction TS strict - whoSavesMore comparaison
 //   2026-04-29 | KREMER Regis | Phase 9.2 - affichage nominatif personne A/B
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
 // =============================================================================
 
 import { clsx } from "clsx";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useAccountingStore } from "@/store/accountingStore";
 import { useProfileStore }    from "@/store/profileStore";
-import { formatEur, formatPct } from "@/utils/formatCurrency";
+import { formatEur } from "@/utils/formatCurrency";
 
 function personName(profile: ReturnType<typeof useProfileStore.getState>["profile"]): string {
   const full = `${profile.holder?.firstName ?? ""} ${profile.holder?.lastName ?? ""}`.trim();
@@ -268,7 +269,7 @@ function StatRow({
 }
 
 function InsightCard({
-  label, value, icon, positive = false,
+  label, value, icon: _icon, positive = false,
 }: {
   label: string; value: string; icon: string; positive?: boolean;
 }) {

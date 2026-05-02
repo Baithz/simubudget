@@ -6,6 +6,7 @@
 // Changelog :
 //   2026-05-01 | KREMER Régis | Création ZIP 7.1 — PIN homogène création et paramètres
 //   2026-05-01 | KREMER Régis | ZIP 7.2 — PIN 4 à 6 chiffres sans bascule automatique à 4
+//   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
 // =============================================================================
 
 import { useMemo, useState } from "react";
@@ -195,7 +196,7 @@ export function PinSetupModal({
             ⌫
           </button>
           <PinSetupButton label="0" onClick={() => addDigit("0")} disabled={loading} />
-          <button type="button" className="btn-brand" onClick={() => void submit()} disabled={!canSubmit}>
+          <button type="button" className="btn-brand" onClick={() => void submit()} disabled={!canSubmit} title={confirmLabel}>
             {loading ? "…" : "OK"}
           </button>
         </div>
