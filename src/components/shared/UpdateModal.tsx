@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-05-01 | KREMER Régis | Création — mise à jour automatique GitHub Releases
+//   2026-05-03 | KREMER Régis | Affichage patchnote utilisateur + version installée dynamique
 // =============================================================================
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -90,14 +91,14 @@ export function UpdateModal({ status, updateInfo, error, progress, onInstall, on
 
                   {/* Versions */}
                   <div className="mt-3 flex items-center justify-center gap-3">
-                    <VersionBadge label={"v2.0.1"} muted />
+                    <VersionBadge label={`v${updateInfo.currentVersion}`} muted />
                     <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5" style={{ color: "var(--text-muted)" }}>
                       <path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
                     </svg>
                     <VersionBadge label={`v${updateInfo.version}`} accent />
                   </div>
 
-                  {/* Notes de release */}
+                  {/* Notes utilisateur */}
                   {updateInfo.body && status !== "downloading" && status !== "installing" && (
                     <div
                       className="mt-4 rounded-2xl p-4 text-sm"
@@ -105,12 +106,15 @@ export function UpdateModal({ status, updateInfo, error, progress, onInstall, on
                         background: "var(--bg-surface-2)",
                         border: "1px solid var(--border)",
                         color: "var(--text-secondary)",
-                        maxHeight: 140,
+                        maxHeight: 260,
                         overflowY: "auto",
-                        lineHeight: 1.6,
+                        lineHeight: 1.65,
                         whiteSpace: "pre-wrap",
                       }}
                     >
+                      <div className="mb-2 text-xs font-extrabold uppercase tracking-[0.18em]" style={{ color: "var(--text-muted)" }}>
+                        Ce qui change pour vous
+                      </div>
                       {updateInfo.body}
                     </div>
                   )}

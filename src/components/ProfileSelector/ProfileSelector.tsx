@@ -13,6 +13,7 @@
 //   2026-05-01 | KREMER Régis | ZIP 7.3 — affichage complet des profils couple
 //   2026-05-02 | KREMER Régis | Ajout suppression profil depuis le sélecteur et création sans reprise active
 //   2026-05-02 | KREMER Régis | Correction Phase 14.1 — carte profil sans bouton imbriqué et création forcée vierge
+//   2026-05-03 | KREMER Régis | Ajout confirmation premium avant suppression définitive d’un profil
 // =============================================================================
 
 import { useEffect, useState } from "react";
@@ -40,7 +41,10 @@ interface PersistedProfileWrapper {
   state?: PersistedProfileState;
 }
 
-function fullNameOf(firstName: string | undefined, lastName: string | undefined): string {
+function fullNameOf(
+  firstName: string | undefined,
+  lastName: string | undefined,
+): string {
   const first = (firstName ?? "").trim();
   const last = (lastName ?? "").trim();
   return `${first} ${last}`.trim() || first || last || "";
@@ -60,8 +64,13 @@ function readScopedUserProfile(profileId: string): UserProfile | null {
 function profileCardDisplayName(entry: ProfileEntry): string {
   const profile = readScopedUserProfile(entry.id);
   if (!profile) return entry.displayName;
-  const holderName = fullNameOf(profile.holder?.firstName, profile.holder?.lastName);
-  const partnerName = profile.partner ? fullNameOf(profile.partner.firstName, profile.partner.lastName) : "";
+  const holderName = fullNameOf(
+    profile.holder?.firstName,
+    profile.holder?.lastName,
+  );
+  const partnerName = profile.partner
+    ? fullNameOf(profile.partner.firstName, profile.partner.lastName)
+    : "";
   if (profile.situation === "couple" && holderName && partnerName) {
     return `${holderName} & ${partnerName}`;
   }
@@ -85,7 +94,12 @@ export function ProfileSelector() {
   const removeProfile = useProfileListStore((state) => state.removeProfile);
   const getLockSeconds = useProfileListStore((state) => state.getLockSeconds);
   const [pinProfile, setPinProfile] = useState<ProfileEntry | null>(null);
-  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
+    null,
+  );
+  const [profileToDelete, setProfileToDelete] = useState<ProfileEntry | null>(
+    null,
+  );
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -139,21 +153,33 @@ export function ProfileSelector() {
     navigate("/onboarding?new=1", { replace: true });
   }
 
-  function deleteProfile(profile: ProfileEntry) {
-    const label = profileCardDisplayName(profile);
-    const ok = window.confirm(`Supprimer le profil "${label}" et toutes ses données locales ?`);
-    if (!ok) return;
-    removeProfile(profile.id);
-    if (profile.id === activeProfileId) {
+  function requestDeleteProfile(profile: ProfileEntry) {
+    if (selectedProfileId !== null) return;
+    setProfileToDelete(profile);
+  }
+
+  function cancelDeleteProfile() {
+    setProfileToDelete(null);
+  }
+
+  function confirmDeleteProfile() {
+    if (!profileToDelete) return;
+    const profileId = profileToDelete.id;
+    removeProfile(profileId);
+    if (profileId === activeProfileId) {
       sessionStorage.removeItem(PROFILE_SESSION_KEY);
       useProfileStore.getState().reset();
       refreshScopedStores();
     }
+    setProfileToDelete(null);
   }
 
   if (pinProfile) {
     return (
-      <div className="min-h-screen px-4 py-10" style={{ background: "var(--bg-base)", color: "var(--text-primary)" }}>
+      <div
+        className="min-h-screen px-4 py-10"
+        style={{ background: "var(--bg-base)", color: "var(--text-primary)" }}
+      >
         <PinPad
           profile={pinProfile}
           lockSeconds={getLockSeconds(pinProfile.id) + tick * 0}
@@ -165,10 +191,22 @@ export function ProfileSelector() {
   }
 
   return (
-    <div className="min-h-screen overflow-hidden px-4 py-10" style={{ background: "var(--bg-base)", color: "var(--text-primary)" }}>
-      <div className="pointer-events-none fixed inset-0 opacity-70" aria-hidden="true">
-        <div className="absolute left-[12%] top-[8%] h-64 w-64 rounded-full blur-3xl" style={{ background: "var(--brand-soft)" }} />
-        <div className="absolute bottom-[8%] right-[10%] h-72 w-72 rounded-full blur-3xl" style={{ background: "var(--fin-green-bg)" }} />
+    <div
+      className="min-h-screen overflow-hidden px-4 py-10"
+      style={{ background: "var(--bg-base)", color: "var(--text-primary)" }}
+    >
+      <div
+        className="pointer-events-none fixed inset-0 opacity-70"
+        aria-hidden="true"
+      >
+        <div
+          className="absolute left-[12%] top-[8%] h-64 w-64 rounded-full blur-3xl"
+          style={{ background: "var(--brand-soft)" }}
+        />
+        <div
+          className="absolute bottom-[8%] right-[10%] h-72 w-72 rounded-full blur-3xl"
+          style={{ background: "var(--fin-green-bg)" }}
+        />
       </div>
 
       <div className="relative mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-6xl flex-col justify-center">
@@ -179,18 +217,28 @@ export function ProfileSelector() {
           className="mb-9 text-center"
         >
           <div className="mx-auto mb-5 flex w-full max-w-[300px] flex-col items-center">
-            <img src={logoFull} alt="SimuBudget" className="h-auto w-[185px] object-contain md:w-[230px]" />
+            <img
+              src={logoFull}
+              alt="SimuBudget"
+              className="h-auto w-[185px] object-contain md:w-[230px]"
+            />
           </div>
-          <h1 className="font-display text-4xl font-extrabold tracking-[-0.06em] text-ink-primary md:text-5xl">Choisissez votre profil</h1>
+          <h1 className="font-display text-4xl font-extrabold tracking-[-0.06em] text-ink-primary md:text-5xl">
+            Choisissez votre profil
+          </h1>
           <p className="mx-auto mt-3 max-w-2xl text-sm font-semibold text-ink-muted">
-            Chaque espace garde ses comptes, scénarios, simulations et paramètres de pilotage.
+            Chaque espace garde ses comptes, scénarios, simulations et
+            paramètres de pilotage.
           </p>
         </motion.header>
 
         <motion.div
           initial="hidden"
           animate="visible"
-          variants={{ visible: { transition: { staggerChildren: 0.065 } }, hidden: {} }}
+          variants={{
+            visible: { transition: { staggerChildren: 0.065 } },
+            hidden: {},
+          }}
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
           {profiles.map((profile) => (
@@ -201,25 +249,190 @@ export function ProfileSelector() {
               isSelected={profile.id === selectedProfileId}
               disabled={selectedProfileId !== null}
               onClick={() => void selectProfile(profile)}
-              onDelete={() => deleteProfile(profile)}
+              onDelete={() => requestDeleteProfile(profile)}
             />
           ))}
           <motion.button
             type="button"
-            variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
+            variants={{
+              hidden: { opacity: 0, y: 16 },
+              visible: { opacity: 1, y: 0 },
+            }}
             whileHover={{ y: -4, scale: 1.012 }}
             whileTap={{ scale: 0.985 }}
             onClick={createProfile}
             className="group flex min-h-[232px] flex-col items-center justify-center rounded-[32px] p-6 text-center transition focus:outline-none focus:ring-4 focus:ring-[var(--brand-soft)]"
-            style={{ background: "var(--bg-surface)", border: "1px dashed var(--border-brand)", boxShadow: "var(--shadow-soft)" }}
+            style={{
+              background: "var(--bg-surface)",
+              border: "1px dashed var(--border-brand)",
+              boxShadow: "var(--shadow-soft)",
+            }}
           >
-            <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-[24px] text-3xl font-extrabold transition group-hover:scale-105" style={{ background: "var(--brand-soft)", color: "var(--brand-1)" }}>+</span>
-            <span className="font-display text-lg font-extrabold text-ink-primary">Nouveau profil</span>
-            <span className="mt-2 max-w-[220px] text-sm font-semibold text-ink-muted">Créer un espace indépendant pour une autre personne ou un autre foyer.</span>
+            <span
+              className="mb-4 flex h-16 w-16 items-center justify-center rounded-[24px] text-3xl font-extrabold transition group-hover:scale-105"
+              style={{
+                background: "var(--brand-soft)",
+                color: "var(--brand-1)",
+              }}
+            >
+              +
+            </span>
+            <span className="font-display text-lg font-extrabold text-ink-primary">
+              Nouveau profil
+            </span>
+            <span className="mt-2 max-w-[220px] text-sm font-semibold text-ink-muted">
+              Créer un espace indépendant pour une autre personne ou un autre
+              foyer.
+            </span>
           </motion.button>
         </motion.div>
+
+        <DeleteProfileDialog
+          profile={profileToDelete}
+          profileName={
+            profileToDelete ? profileCardDisplayName(profileToDelete) : ""
+          }
+          isActive={profileToDelete?.id === activeProfileId}
+          onCancel={cancelDeleteProfile}
+          onConfirm={confirmDeleteProfile}
+        />
       </div>
     </div>
+  );
+}
+
+interface DeleteProfileDialogProps {
+  profile: ProfileEntry | null;
+  profileName: string;
+  isActive: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+function DeleteProfileDialog({
+  profile,
+  profileName,
+  isActive,
+  onCancel,
+  onConfirm,
+}: DeleteProfileDialogProps) {
+  return (
+    <AnimatePresence>
+      {profile && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-profile-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            style={{
+              background: "rgba(15, 23, 42, 0.34)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+            }}
+            aria-label="Annuler la suppression"
+            onClick={onCancel}
+          />
+
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 18, scale: 0.96 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="relative w-full max-w-[480px] overflow-hidden rounded-[32px] p-6 text-left"
+            style={{
+              background: "var(--bg-surface)",
+              border: "1px solid var(--fin-red-border)",
+              boxShadow: "var(--shadow-strong)",
+            }}
+          >
+            <div className="mb-5 flex items-start gap-4">
+              <span
+                className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[20px] text-xl font-black"
+                style={{
+                  background: "var(--fin-red-bg)",
+                  color: "var(--fin-red)",
+                  border: "1px solid var(--fin-red-border)",
+                }}
+              >
+                !
+              </span>
+              <div className="min-w-0">
+                <p className="section-label mb-1">Action définitive</p>
+                <h2
+                  id="delete-profile-title"
+                  className="font-display text-2xl font-extrabold tracking-[-0.04em] text-ink-primary"
+                >
+                  Supprimer ce profil ?
+                </h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-ink-muted">
+                  Le profil{" "}
+                  <span className="font-extrabold text-ink-primary">
+                    {profileName}
+                  </span>{" "}
+                  et ses données locales seront supprimés de cet ordinateur.
+                </p>
+              </div>
+            </div>
+
+            {isActive && (
+              <div
+                className="mb-4 rounded-2xl px-4 py-3 text-sm font-bold leading-6"
+                style={{
+                  background: "var(--fin-amber-bg)",
+                  border: "1px solid var(--fin-amber-border)",
+                  color: "var(--fin-amber)",
+                }}
+              >
+                Ce profil est actuellement actif. Après suppression, SimuBudget
+                reviendra au choix du profil.
+              </div>
+            )}
+
+            <div
+              className="rounded-2xl px-4 py-3 text-sm font-semibold leading-6"
+              style={{
+                background: "var(--bg-surface-2)",
+                border: "1px solid var(--border)",
+                color: "var(--text-secondary)",
+              }}
+            >
+              Cette action ne supprime rien sur un serveur : SimuBudget reste
+              local. Elle efface uniquement l’espace sélectionné et ses données
+              associées.
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={onCancel}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="rounded-2xl px-5 py-3 text-sm font-extrabold transition hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-[var(--fin-red-bg)]"
+                style={{
+                  background: "var(--fin-red)",
+                  color: "white",
+                  boxShadow: "var(--shadow-soft)",
+                }}
+                onClick={onConfirm}
+              >
+                Supprimer définitivement
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -232,10 +445,24 @@ interface ProfileCardProps {
   onDelete: () => void;
 }
 
-function ProfileCard({ profile, isActive, isSelected, disabled, onClick, onDelete }: ProfileCardProps) {
+function ProfileCard({
+  profile,
+  isActive,
+  isSelected,
+  disabled,
+  onClick,
+  onDelete,
+}: ProfileCardProps) {
   const locked = profile.pinHash !== null;
   const cardDisplayName = profileCardDisplayName(profile);
-  const kindLabel = profile.profileKind === "couple" ? "Couple" : profile.profileKind === "cohabiting" ? "Colocation" : profile.profileKind === "separated" ? "Séparé" : "Solo";
+  const kindLabel =
+    profile.profileKind === "couple"
+      ? "Couple"
+      : profile.profileKind === "cohabiting"
+        ? "Colocation"
+        : profile.profileKind === "separated"
+          ? "Séparé"
+          : "Solo";
   const animationProps = disabled
     ? {}
     : {
@@ -245,10 +472,19 @@ function ProfileCard({ profile, isActive, isSelected, disabled, onClick, onDelet
 
   return (
     <motion.div
-      variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}
+      variants={{
+        hidden: { opacity: 0, y: 16 },
+        visible: { opacity: 1, y: 0 },
+      }}
       {...animationProps}
       className="group relative min-h-[232px] overflow-hidden rounded-[32px] text-center transition focus-within:ring-4 focus-within:ring-[var(--brand-soft)]"
-      style={{ background: "var(--bg-surface)", border: isActive ? "1px solid var(--border-brand)" : "1px solid var(--border)", boxShadow: isActive ? "var(--shadow-glow)" : "var(--shadow-soft)" }}
+      style={{
+        background: "var(--bg-surface)",
+        border: isActive
+          ? "1px solid var(--border-brand)"
+          : "1px solid var(--border)",
+        boxShadow: isActive ? "var(--shadow-glow)" : "var(--shadow-soft)",
+      }}
     >
       <button
         type="button"
@@ -256,18 +492,43 @@ function ProfileCard({ profile, isActive, isSelected, disabled, onClick, onDelet
         disabled={disabled}
         className="flex min-h-[232px] w-full flex-col items-center justify-center p-6 disabled:cursor-wait disabled:opacity-80"
       >
-        <span className="pointer-events-none absolute inset-x-0 top-0 h-1" style={{ background: isActive ? "var(--gradient-brand)" : "transparent" }} />
-        <span className="absolute right-4 top-4 rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.18em]" style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
+        <span
+          className="pointer-events-none absolute inset-x-0 top-0 h-1"
+          style={{
+            background: isActive ? "var(--gradient-brand)" : "transparent",
+          }}
+        />
+        <span
+          className="absolute right-4 top-4 rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.18em]"
+          style={{
+            background: "var(--bg-surface-2)",
+            border: "1px solid var(--border)",
+            color: "var(--text-muted)",
+          }}
+        >
           {locked ? "PIN" : "Libre"}
         </span>
 
-        <span className="relative mb-4 flex h-20 w-20 items-center justify-center rounded-[30px] text-2xl font-extrabold text-white shadow-lg transition group-hover:scale-105" style={{ background: profile.avatarColor }}>
+        <span
+          className="relative mb-4 flex h-20 w-20 items-center justify-center rounded-[30px] text-2xl font-extrabold text-white shadow-lg transition group-hover:scale-105"
+          style={{ background: profile.avatarColor }}
+        >
           {profile.avatarInitials}
-          <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full" style={{ background: isActive ? "var(--fin-green)" : "var(--bg-surface-3)", border: "3px solid var(--bg-surface)" }} />
+          <span
+            className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full"
+            style={{
+              background: isActive ? "var(--fin-green)" : "var(--bg-surface-3)",
+              border: "3px solid var(--bg-surface)",
+            }}
+          />
         </span>
 
-        <span className="font-display text-xl font-extrabold text-ink-primary">{cardDisplayName}</span>
-        <span className="mt-2 text-sm font-semibold text-ink-muted">Dernier usage : {formatProfileLastUsed(profile.lastUsed)}</span>
+        <span className="font-display text-xl font-extrabold text-ink-primary">
+          {cardDisplayName}
+        </span>
+        <span className="mt-2 text-sm font-semibold text-ink-muted">
+          Dernier usage : {formatProfileLastUsed(profile.lastUsed)}
+        </span>
 
         <span className="mt-4 flex flex-wrap justify-center gap-2">
           {isActive && <Badge label="Actif" tone="brand" />}
@@ -282,9 +543,16 @@ function ProfileCard({ profile, isActive, isSelected, disabled, onClick, onDelet
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
               className="mt-4 inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-extrabold"
-              style={{ background: "var(--brand-soft)", color: "var(--brand-1)", border: "1px solid var(--border-brand)" }}
+              style={{
+                background: "var(--brand-soft)",
+                color: "var(--brand-1)",
+                border: "1px solid var(--border-brand)",
+              }}
             >
-              <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: "var(--brand-1)" }} />
+              <span
+                className="h-2 w-2 animate-pulse rounded-full"
+                style={{ background: "var(--brand-1)" }}
+              />
               Ouverture du profil…
             </motion.span>
           )}
@@ -300,7 +568,11 @@ function ProfileCard({ profile, isActive, isSelected, disabled, onClick, onDelet
           onDelete();
         }}
         className="absolute right-4 top-14 flex h-8 w-8 items-center justify-center rounded-full text-sm font-black transition hover:scale-105 focus:outline-none focus:ring-4 focus:ring-[var(--fin-red-bg)]"
-        style={{ background: "var(--fin-red-bg)", border: "1px solid var(--fin-red-border)", color: "var(--fin-red)" }}
+        style={{
+          background: "var(--fin-red-bg)",
+          border: "1px solid var(--fin-red-border)",
+          color: "var(--fin-red)",
+        }}
       >
         ×
       </button>
@@ -313,8 +585,12 @@ function Badge({ label, tone }: { label: string; tone: "brand" | "muted" }) {
     <span
       className="rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em]"
       style={{
-        background: tone === "brand" ? "var(--brand-soft)" : "var(--bg-surface-2)",
-        border: tone === "brand" ? "1px solid var(--border-brand)" : "1px solid var(--border)",
+        background:
+          tone === "brand" ? "var(--brand-soft)" : "var(--bg-surface-2)",
+        border:
+          tone === "brand"
+            ? "1px solid var(--border-brand)"
+            : "1px solid var(--border)",
         color: tone === "brand" ? "var(--brand-1)" : "var(--text-muted)",
       }}
     >

@@ -7,11 +7,14 @@
 // Changelog :
 //   2026-05-01 | KREMER Régis | Création — plugin tauri-plugin-updater v2
 //   2026-05-01 | KREMER Régis | Phase 13C — diagnostic fiable erreurs updater
+//   2026-05-03 | KREMER Régis | Ajout notes utilisateur auto-update + version installée
 // =============================================================================
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
+import { getFallbackReleaseNotes } from "@/data/releaseNotes";
 
 export type UpdateStatus =
   | "idle"
@@ -23,9 +26,10 @@ export type UpdateStatus =
   | "error";
 
 export interface UpdateInfo {
-  version:     string;
-  date?:       string;
-  body?:       string;     // Notes de version (markdown)
+  version:        string;
+  currentVersion: string;
+  date?:          string;
+  body?:          string;     // Notes de version utilisateur
 }
 
 export interface UseUpdaterReturn {
@@ -36,6 +40,20 @@ export interface UseUpdaterReturn {
   checkUpdate:  () => Promise<void>;
   installUpdate: () => Promise<void>;
   dismiss:      () => void;
+}
+
+async function getInstalledVersion(): Promise<string> {
+  try {
+    return await getVersion();
+  } catch {
+    return "version actuelle";
+  }
+}
+
+function normalizeReleaseNotes(notes: string | undefined): string | null {
+  const clean = notes?.trim();
+  if (!clean) return null;
+  return clean;
 }
 
 export function useUpdater(checkOnMount = false): UseUpdaterReturn {
@@ -61,9 +79,11 @@ export function useUpdater(checkOnMount = false): UseUpdaterReturn {
 
       updateRef.current = update;
 
-      const info: UpdateInfo = { version: update.version };
+      const currentVersion = await getInstalledVersion();
+      const body = normalizeReleaseNotes(update.body) ?? getFallbackReleaseNotes(update.version) ?? undefined;
+      const info: UpdateInfo = { version: update.version, currentVersion };
       if (update.date) info.date = update.date;
-      if (update.body) info.body = update.body;
+      if (body) info.body = body;
       setUpdateInfo(info);
       setStatus("available");
     } catch (err) {

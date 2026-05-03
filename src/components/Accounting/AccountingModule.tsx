@@ -21,6 +21,7 @@
 //   2026-05-01 | KREMER Régis | Phase 13B — pédagogie et aide UX méthode enveloppes
 //   2026-05-01 | KREMER Régis | Phase 13C.3 — création explicite des enveloppes et liaison dépenses
 //   2026-05-02 | KREMER Régis | Ajout rapide de dépense depuis chaque catégorie affichée
+//   2026-05-03 | KREMER Régis | Phase 15.1 — onglet Rapprochement + import CSV branché sur le nouveau modal
 // =============================================================================
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -41,6 +42,10 @@ import { CoupleView } from "./CoupleView";
 import { GoalsPanel } from "./GoalsPanel";
 import { HistoryPanel } from "./HistoryPanel";
 import { DataInsightsPanel } from "./DataInsightsPanel";
+// Phase 15.1 — import du nouveau modal et du panel de rapprochement
+import { CSVImportModal } from "./CSVImportModal";
+import { ReconciliationPanel } from "./ReconciliationPanel";
+import { useReconciliationStore } from "@/store/reconciliationStore";
 
 const FREQ_LABELS: Record<Frequency, string> = {
   weekly:  "Hebdomadaire",
@@ -89,6 +94,9 @@ function monthTitle(month: string): string {
 
 export function AccountingModule() {
   const [tab, setTab] = useState(0);
+  // Phase 15.1 — état du modal d'import CSV
+  const [showImportModal, setShowImportModal] = useState(false);
+
   const store = useAccountingStore();
   const profile = useProfileStore((s) => s.profile);
   const budget = store.getBudget();
@@ -97,10 +105,16 @@ export function AccountingModule() {
   const personName = personNameFromProfile(profile);
   const partnerName = partnerNameFromProfile(profile);
 
+  // Phase 15.1 — badge de rapprochement : nb transactions non appairées sur le mois actif
+  const reconciliationTxCount = useReconciliationStore(
+    (s) => s.getDebitTransactions(store.activeMonth).length
+  );
+
   useEffect(() => {
     store.ensureMonth();
   }, [store.activeMonth]);
 
+  // Phase 15.1 — "Rapprochement" inséré avant "Objectifs"
   const tabs = useMemo(() => [
     "Bilan",
     "Enveloppes",
@@ -108,14 +122,17 @@ export function AccountingModule() {
     "Dépenses",
     "Optimisation",
     ...(isCouple ? ["Couple"] : []),
+    "Rapprochement",
     "Objectifs",
     "Historique",
     "Analyse",
   ], [isCouple]);
 
-  const objectifsIndex = isCouple ? 6 : 5;
-  const historiqueIndex = isCouple ? 7 : 6;
-  const analyseIndex = isCouple ? 8 : 7;
+  // Indices recalculés après insertion de "Rapprochement"
+  const rapprochementIndex = isCouple ? 6 : 5;
+  const objectifsIndex     = isCouple ? 7 : 6;
+  const historiqueIndex    = isCouple ? 8 : 7;
+  const analyseIndex       = isCouple ? 9 : 8;
 
   useEffect(() => {
     if (tab > tabs.length - 1) {
@@ -125,7 +142,17 @@ export function AccountingModule() {
 
   return (
     <div className="page-shell space-y-6">
-      <Header store={store} />
+      {/* Phase 15.1 — modal import CSV (nouveau pipeline) */}
+      <AnimatePresence>
+        {showImportModal && (
+          <CSVImportModal
+            onClose={() => setShowImportModal(false)}
+            activeMonth={store.activeMonth}
+          />
+        )}
+      </AnimatePresence>
+
+      <Header store={store} onOpenImport={() => setShowImportModal(true)} />
 
       <div className="flex gap-1 rounded-2xl p-1 overflow-x-auto border [background:var(--bg-surface-2)] [border-color:var(--border)]">
         {tabs.map((label, i) => (
@@ -133,13 +160,22 @@ export function AccountingModule() {
             key={label}
             onClick={() => setTab(i)}
             className={clsx(
-              "flex-shrink-0 py-2.5 px-4 rounded-xl text-xs font-semibold transition-all",
+              "flex-shrink-0 py-2.5 px-4 rounded-xl text-xs font-semibold transition-all relative",
               tab === i
                 ? "card text-ink-primary shadow-sm"
                 : "text-ink-secondary hover:text-ink-primary hover:[background:var(--bg-surface-2)]"
             )}
           >
             {label}
+            {/* Phase 15.1 — badge sur l'onglet Rapprochement si transactions présentes */}
+            {label === "Rapprochement" && reconciliationTxCount > 0 && (
+              <span
+                className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-black text-white"
+                style={{ background: "var(--brand-1)" }}
+              >
+                {reconciliationTxCount > 9 ? "9+" : reconciliationTxCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -152,22 +188,37 @@ export function AccountingModule() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
         >
-          {tab === 0 && <BilanTab store={store} budget={budget} recs={recs} />}
+          {tab === 0 && <BilanTab store={store} budget={budget} recs={recs} onOpenImport={() => setShowImportModal(true)} />}
           {tab === 1 && <EnvelopeTab store={store} />}
           {tab === 2 && <RevenusTab store={store} isCouple={isCouple} personName={personName} partnerName={partnerName} />}
           {tab === 3 && <DépensesTab store={store} isCouple={isCouple} personName={personName} partnerName={partnerName} />}
           {tab === 4 && <OptimisationTab recs={recs} />}
           {isCouple && tab === 5 && <CoupleView />}
-          {tab === objectifsIndex && <GoalsPanel />}
+          {/* Phase 15.1 — onglet Rapprochement */}
+          {tab === rapprochementIndex && (
+            <RapprochementTab
+              activeMonth={store.activeMonth}
+              onOpenImport={() => setShowImportModal(true)}
+            />
+          )}
+          {tab === objectifsIndex  && <GoalsPanel />}
           {tab === historiqueIndex && <HistoryPanel />}
-          {tab === analyseIndex && <DataInsightsPanel />}
+          {tab === analyseIndex    && <DataInsightsPanel />}
         </motion.div>
       </AnimatePresence>
     </div>
   );
 }
 
-function Header({ store }: { store: ReturnType<typeof useAccountingStore.getState> }) {
+// ─── Header ──────────────────────────────────────────────────────────────────
+
+function Header({
+  store,
+  onOpenImport,
+}: {
+  store: ReturnType<typeof useAccountingStore.getState>;
+  onOpenImport: () => void;
+}) {
   const summary = store.getMonthSummary();
   return (
     <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
@@ -177,25 +228,151 @@ function Header({ store }: { store: ReturnType<typeof useAccountingStore.getStat
           Pilotage mensuel réel : validez les charges récurrentes, ajoutez les dépenses du mois, puis clôturez.
         </p>
       </div>
-      <div className="card rounded-2xl border [border-color:var(--border)] p-2 flex items-center gap-2 shadow-card">
-        <button className="month-nav-btn" onClick={() => store.shiftActiveMonth(-1)} aria-label="Mois précédent">←</button>
-        <div className="px-3 min-w-44 text-center">
-          <p className="text-xs text-ink-muted">Mois actif</p>
-          <p className="text-sm font-bold text-ink-primary capitalize">{monthTitle(store.activeMonth)}</p>
-        </div>
-        <button className="month-nav-btn" onClick={() => store.shiftActiveMonth(1)} aria-label="Mois suivant">→</button>
-        <div className={clsx("ml-2 px-3 py-2 rounded-xl text-xs font-bold", summary.isClosed ? "text-[var(--fin-green)] [background:var(--fin-green-bg)] border border-[var(--fin-green-border)]" : "text-[var(--fin-amber)] [background:var(--fin-amber-bg)] border border-[var(--fin-amber-border)]")}>
-          {summary.isClosed ? "Clôturé" : `${summary.pendingCount} à valider`}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Phase 15.1 — bouton import CSV branché sur le nouveau modal */}
+        <button
+          type="button"
+          className="btn-secondary inline-flex items-center gap-2"
+          onClick={onOpenImport}
+        >
+          <svg viewBox="0 0 14 14" fill="currentColor" className="h-3.5 w-3.5">
+            <path d="M7 1.5 4 4.5h2V9h2V4.5h2L7 1.5ZM2.5 11h9v1.5h-9V11Z" />
+          </svg>
+          Importer un relevé
+        </button>
+        <div className="card rounded-2xl border [border-color:var(--border)] p-2 flex items-center gap-2 shadow-card">
+          <button className="month-nav-btn" onClick={() => store.shiftActiveMonth(-1)} aria-label="Mois précédent">←</button>
+          <div className="px-3 min-w-44 text-center">
+            <p className="text-xs text-ink-muted">Mois actif</p>
+            <p className="text-sm font-bold text-ink-primary capitalize">{monthTitle(store.activeMonth)}</p>
+          </div>
+          <button className="month-nav-btn" onClick={() => store.shiftActiveMonth(1)} aria-label="Mois suivant">→</button>
+          <div className={clsx("ml-2 px-3 py-2 rounded-xl text-xs font-bold", summary.isClosed ? "text-[var(--fin-green)] [background:var(--fin-green-bg)] border border-[var(--fin-green-border)]" : "text-[var(--fin-amber)] [background:var(--fin-amber-bg)] border border-[var(--fin-amber-border)]")}>
+            {summary.isClosed ? "Clôturé" : `${summary.pendingCount} à valider`}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function BilanTab({ store, budget, recs }: {
+// ─── Onglet Rapprochement — Phase 15.1 ───────────────────────────────────────
+
+function RapprochementTab({
+  activeMonth,
+  onOpenImport,
+}: {
+  activeMonth: string;
+  onOpenImport: () => void;
+}) {
+  const availableMonths  = useReconciliationStore((s) => s.getAvailableMonths());
+  const setActiveMonth   = useReconciliationStore((s) => s.setActiveMonth);
+  const storeActiveMonth = useReconciliationStore((s) => s.activeMonth);
+  const clearMonth       = useReconciliationStore((s) => s.clearMonth);
+
+  // Mois affiché : celui du store de rapprochement, ou le mois actif comptable par défaut
+  const displayMonth = storeActiveMonth ?? activeMonth;
+
+  return (
+    <div className="space-y-5">
+      {/* En-tête de section */}
+      <div className="card rounded-2xl border [border-color:var(--border)] p-5 shadow-card overflow-hidden relative">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-start via-brand-mid to-brand-end" />
+        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-widest font-bold text-ink-muted">Import bancaire</p>
+            <h2 className="text-xl font-bold text-ink-primary mt-1">Rapprochement prévu / réel</h2>
+            <p className="text-sm text-ink-secondary mt-2 max-w-3xl">
+              Importez votre relevé bancaire, validez les transactions et confrontez-les à vos dépenses saisies manuellement.
+              L'écart en euros s'affiche enveloppe par enveloppe.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-brand inline-flex items-center gap-2"
+              onClick={onOpenImport}
+            >
+              <svg viewBox="0 0 14 14" fill="currentColor" className="h-3.5 w-3.5">
+                <path d="M7 1.5 4 4.5h2V9h2V4.5h2L7 1.5ZM2.5 11h9v1.5h-9V11Z" />
+              </svg>
+              Importer un relevé
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Sélecteur de mois + actions */}
+      {availableMonths.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-ink-muted">Mois affiché</label>
+            <select
+              className="input-premium text-sm py-1.5"
+              value={displayMonth}
+              onChange={(e) => setActiveMonth(e.target.value)}
+            >
+              {availableMonths.map((m) => (
+                <option key={m} value={m}>{monthTitle(m)}</option>
+              ))}
+              {!availableMonths.includes(activeMonth) && (
+                <option value={activeMonth}>{monthTitle(activeMonth)} (aucun import)</option>
+              )}
+            </select>
+          </div>
+
+          {availableMonths.includes(displayMonth) && (
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              onClick={() => {
+                if (window.confirm(`Supprimer toutes les transactions importées pour ${monthTitle(displayMonth)} ?`)) {
+                  clearMonth(displayMonth);
+                  setActiveMonth(availableMonths.find((m) => m !== displayMonth) ?? null);
+                }
+              }}
+            >
+              Effacer l'import de ce mois
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Panel de rapprochement ou état vide */}
+      {availableMonths.length === 0 ? (
+        <div className="card rounded-2xl border [border-color:var(--border)] p-12 text-center shadow-card">
+          <svg viewBox="0 0 32 32" fill="currentColor" className="mx-auto h-10 w-10 mb-4" style={{ color: "var(--text-placeholder)" }}>
+            <path d="M6 8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8Zm2 0v16h16V8H8Zm6 4h4v4h-4v-4Zm0 6h4v2h-4v-2Zm-3-6h1.5v4H11v-4Zm0 6h1.5v2H11v-2Zm8-6H20v4h-1.5v-4Zm0 6H20v2h-1.5v-2Z" />
+          </svg>
+          <p className="font-bold text-ink-primary">Aucun relevé bancaire importé</p>
+          <p className="text-sm text-ink-secondary mt-1 mb-5">
+            Importez votre relevé CSV pour voir le rapprochement avec vos dépenses manuelles.
+          </p>
+          <button
+            type="button"
+            className="btn-brand inline-flex items-center gap-2 mx-auto"
+            onClick={onOpenImport}
+          >
+            <svg viewBox="0 0 14 14" fill="currentColor" className="h-3.5 w-3.5">
+              <path d="M7 1.5 4 4.5h2V9h2V4.5h2L7 1.5ZM2.5 11h9v1.5h-9V11Z" />
+            </svg>
+            Importer un relevé CSV
+          </button>
+        </div>
+      ) : (
+        <ReconciliationPanel month={displayMonth} />
+      )}
+    </div>
+  );
+}
+
+// ─── BilanTab ─────────────────────────────────────────────────────────────────
+
+function BilanTab({ store, budget, recs, onOpenImport }: {
   store: ReturnType<typeof useAccountingStore.getState>;
   budget: MonthlyBudget;
   recs: AccountingRecommendation[];
+  onOpenImport: () => void;
 }) {
   const summary = store.getMonthSummary();
   const monthLines = store.getMonthExpenses().filter((line) => line.status !== "ignored");
@@ -256,6 +433,12 @@ function BilanTab({ store, budget, recs }: {
           <div className="grid gap-3">
             <ActionButton label="Valider toutes les charges fixes" sub="Passe toutes les lignes en attente au statut validé." onClick={() => store.getMonthExpenses().filter((l) => l.status === "pending" && l.isFixed).forEach((l) => store.validateMonthlyExpense(l.id))} />
             <ActionButton label={summary.isClosed ? "Réouvrir le mois" : "Clôturer le mois"} sub={summary.isClosed ? "Autorise les modifications du mois." : "Fige le mois et alimente l'historique."} onClick={() => summary.isClosed ? store.reopenMonth() : store.closeMonth()} />
+            {/* Phase 15.1 — raccourci import depuis le Bilan */}
+            <ActionButton
+              label="Importer un relevé bancaire"
+              sub="Confrontez vos dépenses prévues avec le réel de votre compte."
+              onClick={onOpenImport}
+            />
           </div>
           {recs.length > 0 && (
             <div className="mt-5 space-y-2">
@@ -313,7 +496,7 @@ function EnvelopeTab({ store }: { store: ReturnType<typeof useAccountingStore.ge
             <p className="text-xs uppercase tracking-widest font-bold text-ink-muted">Méthode des enveloppes</p>
             <h2 className="text-xl font-bold text-ink-primary mt-1">Créer, suivre et ajuster vos enveloppes</h2>
             <p className="text-sm text-ink-secondary mt-2 max-w-3xl">
-              Une enveloppe est un plafond mensuel volontaire sur une catégorie variable. Quand vous ajoutez une dépense réelle dans cette catégorie, l’enveloppe se met à jour automatiquement.
+              Une enveloppe est un plafond mensuel volontaire sur une catégorie variable. Quand vous ajoutez une dépense réelle dans cette catégorie, l'enveloppe se met à jour automatiquement.
             </p>
             <p className="text-xs font-semibold text-ink-muted mt-2 max-w-3xl">
               À garder hors enveloppes : loyer, crédits, assurances, énergie et prélèvements fixes. À piloter en enveloppes : alimentation, carburant, loisirs, restaurant, santé, habillement, cadeaux, vacances et imprévus.
@@ -346,7 +529,7 @@ function EnvelopeTab({ store }: { store: ReturnType<typeof useAccountingStore.ge
 
       {!hasConfiguredEnvelopes && (
         <div className="rounded-2xl p-4 text-sm font-semibold" style={{ background: "var(--fin-amber-bg)", color: "var(--fin-amber)", border: "1px solid var(--fin-amber-border)" }}>
-          Aucune enveloppe n’est encore configurée. Cliquez sur “Configurer mes enveloppes”, choisissez une catégorie, puis indiquez le montant maximum autorisé sur le mois.
+          Aucune enveloppe n'est encore configurée. Cliquez sur "Configurer mes enveloppes", choisissez une catégorie, puis indiquez le montant maximum autorisé sur le mois.
         </div>
       )}
 
@@ -447,7 +630,7 @@ function EnvelopeSetup({ store }: { store: ReturnType<typeof useAccountingStore.
           <p className="text-xs uppercase tracking-widest font-bold text-ink-muted">Configuration</p>
           <h3 className="text-lg font-extrabold text-ink-primary mt-1">Mes enveloppes du mois</h3>
           <p className="text-sm text-ink-secondary mt-1 max-w-3xl">
-            Définissez vos plafonds. Ensuite, chaque dépense réelle ajoutée dans “Dépenses du mois” avec la même catégorie consomme automatiquement l’enveloppe correspondante.
+            Définissez vos plafonds. Ensuite, chaque dépense réelle ajoutée dans "Dépenses du mois" avec la même catégorie consomme automatiquement l'enveloppe correspondante.
           </p>
         </div>
         <button type="button" className="btn-secondary" onClick={() => reset()}>
@@ -467,11 +650,11 @@ function EnvelopeSetup({ store }: { store: ReturnType<typeof useAccountingStore.
             else reset(category);
           }}
         />
-        <TextInput label="Nom de l’enveloppe" value={form.label} onChange={(value) => setForm({ ...form, label: value })} />
+        <TextInput label="Nom de l'enveloppe" value={form.label} onChange={(value) => setForm({ ...form, label: value })} />
         <NumberInput label="Montant mensuel (€)" value={form.monthlyLimit} onChange={(value) => setForm({ ...form, monthlyLimit: value })} />
         <TextInput label="Note (optionnel)" value={form.notes} onChange={(value) => setForm({ ...form, notes: value })} placeholder="Ex : objectif carburant" />
         <button type="button" className="btn-brand w-full" onClick={saveEnvelope}>
-          {form.id ? "Mettre à jour" : "Créer l’enveloppe"}
+          {form.id ? "Mettre à jour" : "Créer l'enveloppe"}
         </button>
       </div>
 
@@ -526,11 +709,11 @@ function EnvelopeGuide() {
     },
     {
       title: "5. Je redistribue seulement si nécessaire",
-      text: "S’il reste 30 € en loisirs mais qu’il manque 30 € en carburant, le rééquilibrage crée une trace au lieu de modifier les chiffres en silence.",
+      text: "S'il reste 30 € en loisirs mais qu'il manque 30 € en carburant, le rééquilibrage crée une trace au lieu de modifier les chiffres en silence.",
     },
     {
       title: "6. Je réajuste après 2 ou 3 mois",
-      text: "Une enveloppe rouge tous les mois n’est pas un échec : c’est le signal qu’il faut revoir le montant prévu ou l’habitude de dépense.",
+      text: "Une enveloppe rouge tous les mois n'est pas un échec : c'est le signal qu'il faut revoir le montant prévu ou l'habitude de dépense.",
     },
   ];
 
@@ -541,7 +724,7 @@ function EnvelopeGuide() {
           <p className="text-xs uppercase tracking-widest font-bold text-ink-muted">Guide rapide</p>
           <h3 className="text-lg font-extrabold text-ink-primary mt-1">Comprendre les enveloppes dans SimuBudget</h3>
           <p className="text-sm text-ink-secondary mt-2 max-w-3xl">
-            Ici, il n’est pas obligatoire de retirer des espèces. L’idée est la même : réserver une somme maximale par poste variable, suivre ce qui sort, puis garder ou réaffecter ce qui reste.
+            Ici, il n'est pas obligatoire de retirer des espèces. L'idée est la même : réserver une somme maximale par poste variable, suivre ce qui sort, puis garder ou réaffecter ce qui reste.
           </p>
         </div>
         <div className="rounded-2xl px-4 py-3 text-sm font-bold" style={{ background: "var(--fin-blue-bg)", color: "var(--fin-blue)", border: "1px solid var(--fin-blue-border)" }}>
@@ -603,6 +786,7 @@ function EnvelopeCard({ status }: { status: EnvelopeStatus }) {
     </div>
   );
 }
+
 function MonthPilotCard({ store }: { store: ReturnType<typeof useAccountingStore.getState> }) {
   const summary = store.getMonthSummary();
   return (
@@ -897,7 +1081,6 @@ function PlannedExpenseForm({ form, setForm, isCouple, personName, partnerName, 
       className="rounded-2xl p-5 space-y-4"
       style={{ background: "var(--bg-surface)", border: "1px solid var(--border-brand)", boxShadow: "var(--shadow-md)" }}
     >
-      {/* En-tête */}
       <div className="flex items-center gap-2 pb-3" style={{ borderBottom: "1px solid var(--border)" }}>
         <div className="h-4 w-1 rounded-full" style={{ background: "var(--brand-1)" }} />
         <p className="font-display text-sm font-extrabold" style={{ color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
@@ -905,7 +1088,6 @@ function PlannedExpenseForm({ form, setForm, isCouple, personName, partnerName, 
         </p>
       </div>
 
-      {/* Ligne 1 : Libellé + Catégorie */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <TextInput label="Libellé" value={form.label} onChange={(value) => setForm({ ...form, label: value })} placeholder="Ex : Loyer, Crédit auto…" />
         <CategoryInput
@@ -920,7 +1102,6 @@ function PlannedExpenseForm({ form, setForm, isCouple, personName, partnerName, 
         />
       </div>
 
-      {/* Ligne 2 : Montant + Fréquence */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <NumberInput label="Montant (€)" value={form.amount} onChange={(value) => setForm({ ...form, amount: value })} />
         <SelectInput
@@ -953,7 +1134,6 @@ function PlannedExpenseForm({ form, setForm, isCouple, personName, partnerName, 
         </div>
       )}
 
-      {/* Ligne 3 : Fixe + Obligatoire + Owner (même ligne) */}
       <div className="flex flex-wrap items-center gap-6">
         <ToggleInput label="Fixe" checked={form.isFixed} onChange={(checked) => setForm({ ...form, isFixed: checked })} />
         <ToggleInput label="Obligatoire" checked={form.isMandatory} onChange={(checked) => setForm({ ...form, isMandatory: checked })} />
@@ -964,7 +1144,6 @@ function PlannedExpenseForm({ form, setForm, isCouple, personName, partnerName, 
         )}
       </div>
 
-      {/* Phase 12A — Bloc crédit : visible uniquement si catégorie = Crédits */}
       {form.category === "credit" && (
         <div
           className="rounded-xl p-4 space-y-3"
@@ -1019,7 +1198,6 @@ function PlannedExpenseForm({ form, setForm, isCouple, personName, partnerName, 
         </div>
       )}
 
-      {/* Actions */}
       <div className="flex justify-end gap-2 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
         <button type="button" className="btn-secondary" onClick={onCancel}>Annuler</button>
         <button type="button" className="btn-brand" onClick={onSave}>Enregistrer</button>
@@ -1092,7 +1270,6 @@ function EnvelopeImpactPreview({ store, category, amount }: { store: ReturnType<
 
 function MonthlyExpenseRow({ line, store, personName, partnerName }: { line: MonthlyExpenseLine; store: ReturnType<typeof useAccountingStore.getState>; personName: string; partnerName: string }) {
   const isClosed   = store.getMonthSummary(line.month).isClosed;
-  // Fix 4 — logique statuts : validated et ignored = non modifiable
   const isEditable = !isClosed && (line.status === "pending" || line.status === "added");
 
   return (
@@ -1108,7 +1285,6 @@ function MonthlyExpenseRow({ line, store, personName, partnerName }: { line: Mon
           {ownerLabel(line.owner, personName, partnerName)} · {line.sourceExpenseId ? "récurrente proposée" : "ajout du mois"}
           {line.creditLender && ` · ${line.creditLender}`}
         </p>
-        {/* Phase 12A — affichage crédit enrichi */}
         {line.creditRemainingMonths !== undefined && (
           <div className="flex items-center gap-2 mt-1">
             <span
@@ -1167,6 +1343,8 @@ function MonthlyExpenseRow({ line, store, personName, partnerName }: { line: Mon
     </div>
   );
 }
+
+// ─── Composants utilitaires (inchangés) ──────────────────────────────────────
 
 function MetricCard({ label, value, sub, tone = "neutral" }: { label: string; value: string; sub: string; tone?: "neutral" | "green" | "amber" | "red" }) {
   const toneClass = tone === "green" ? "text-[var(--fin-green)]" : tone === "amber" ? "text-[var(--fin-amber)]" : tone === "red" ? "text-[var(--fin-red)]" : "text-ink-primary";
@@ -1300,39 +1478,21 @@ function FormShell({ title, children, onSave, onCancel }: { title: string; child
         boxShadow:   "var(--shadow-md)",
       }}
     >
-      {/* En-tête formulaire */}
       <div
         className="flex items-center gap-2 mb-5 pb-3"
         style={{ borderBottom: "1px solid var(--border)" }}
       >
-        <div
-          className="h-4 w-1 rounded-full"
-          style={{ background: "var(--brand-1)" }}
-        />
-        <p
-          className="font-display text-sm font-extrabold"
-          style={{ color: "var(--text-primary)", letterSpacing: "-0.02em" }}
-        >
+        <div className="h-4 w-1 rounded-full" style={{ background: "var(--brand-1)" }} />
+        <p className="font-display text-sm font-extrabold" style={{ color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
           {title}
         </p>
       </div>
-
-      {/* Corps — grille responsive 2 colonnes max */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {children}
       </div>
-
-      {/* Actions */}
-      <div
-        className="flex justify-end gap-2 mt-5 pt-4"
-        style={{ borderTop: "1px solid var(--border)" }}
-      >
-        <button type="button" className="btn-secondary" onClick={onCancel}>
-          Annuler
-        </button>
-        <button type="button" className="btn-brand" onClick={onSave}>
-          Enregistrer
-        </button>
+      <div className="flex justify-end gap-2 mt-5 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+        <button type="button" className="btn-secondary" onClick={onCancel}>Annuler</button>
+        <button type="button" className="btn-brand" onClick={onSave}>Enregistrer</button>
       </div>
     </div>
   );
@@ -1341,15 +1501,8 @@ function FormShell({ title, children, onSave, onCancel }: { title: string; child
 function TextInput({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-bold" style={{ color: "var(--text-secondary)", letterSpacing: ".01em" }}>
-        {label}
-      </span>
-      <input
-        className="input-premium"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-      />
+      <span className="text-xs font-bold" style={{ color: "var(--text-secondary)", letterSpacing: ".01em" }}>{label}</span>
+      <input className="input-premium" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
     </div>
   );
 }
@@ -1357,15 +1510,8 @@ function TextInput({ label, value, onChange, placeholder }: { label: string; val
 function NumberInput({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-bold" style={{ color: "var(--text-secondary)", letterSpacing: ".01em" }}>
-        {label}
-      </span>
-      <input
-        className="input-premium font-mono"
-        type="number"
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
+      <span className="text-xs font-bold" style={{ color: "var(--text-secondary)", letterSpacing: ".01em" }}>{label}</span>
+      <input className="input-premium font-mono" type="number" value={value} onChange={(event) => onChange(Number(event.target.value))} />
     </div>
   );
 }
@@ -1373,14 +1519,8 @@ function NumberInput({ label, value, onChange }: { label: string; value: number;
 function SelectInput({ label, value, options, onChange }: { label: string; value: string; options: Array<{ value: string; label: string }>; onChange: (value: string) => void }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-bold" style={{ color: "var(--text-secondary)", letterSpacing: ".01em" }}>
-        {label}
-      </span>
-      <select
-        className="input-premium"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
+      <span className="text-xs font-bold" style={{ color: "var(--text-secondary)", letterSpacing: ".01em" }}>{label}</span>
+      <select className="input-premium" value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
         ))}
@@ -1400,7 +1540,6 @@ function OwnerInput({ value, personName, partnerName, onChange }: { value: Expen
 function ToggleInput({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
     <label className="flex items-center gap-3 cursor-pointer">
-      {/* Checkbox custom tokens CSS */}
       <div
         onClick={() => onChange(!checked)}
         className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded transition-all cursor-pointer"
@@ -1417,12 +1556,7 @@ function ToggleInput({ label, checked, onChange }: { label: string; checked: boo
           </svg>
         )}
       </div>
-      <span
-        className="text-sm font-semibold select-none"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        {label}
-      </span>
+      <span className="text-sm font-semibold select-none" style={{ color: "var(--text-secondary)" }}>{label}</span>
     </label>
   );
 }
@@ -1434,26 +1568,11 @@ function StatusBadge({ status }: { status: MonthlyExpenseLine["status"] }) {
     added:     "Ajoutée",
     ignored:   "Ignorée",
   };
-  const bgColor   = status === "validated" || status === "added"
-    ? "var(--fin-green-bg)"
-    : status === "pending"
-    ? "var(--fin-amber-bg)"
-    : "var(--bg-surface-2)";
-  const textColor = status === "validated" || status === "added"
-    ? "var(--fin-green)"
-    : status === "pending"
-    ? "var(--fin-amber)"
-    : "var(--text-muted)";
-  const borderColor = status === "validated" || status === "added"
-    ? "var(--fin-green-border)"
-    : status === "pending"
-    ? "var(--fin-amber-border)"
-    : "var(--border)";
+  const bgColor   = status === "validated" || status === "added" ? "var(--fin-green-bg)" : status === "pending" ? "var(--fin-amber-bg)" : "var(--bg-surface-2)";
+  const textColor = status === "validated" || status === "added" ? "var(--fin-green)" : status === "pending" ? "var(--fin-amber)" : "var(--text-muted)";
+  const borderColor = status === "validated" || status === "added" ? "var(--fin-green-border)" : status === "pending" ? "var(--fin-amber-border)" : "var(--border)";
   return (
-    <span
-      className="text-[10px] px-2 py-0.5 rounded-full font-bold"
-      style={{ background: bgColor, color: textColor, border: `1px solid ${borderColor}` }}
-    >
+    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: bgColor, color: textColor, border: `1px solid ${borderColor}` }}>
       {labels[status]}
     </span>
   );

@@ -1,7 +1,8 @@
 // =============================================================================
 // Fichier  : src/components/Accounting/GoalsPanel.tsx
 // Auteur   : KREMER Regis
-// Desc.    : Objectifs d'epargne - creation, suivi, projection, financement intelligent
+// Desc.    : Objectifs de vie avec projection réelle, capacité mensuelle,
+//            date cible, actions et accélération.
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-04-27 | KREMER Regis | Creation Phase 6
@@ -9,134 +10,172 @@
 //   2026-04-28 | KREMER Regis | Phase 7 - actions cliquables, analyse depenses non-essentielles
 //   2026-05-01 | KREMER Régis | Patch 8.1 — stabilité interactions objectifs
 //   2026-05-02 | KREMER Régis | Correction lint ESLint 9 — variables inutilisées et règles React adaptées
+//   2026-05-03 | KREMER Régis | Objectifs de vie + projection réelle
 // =============================================================================
 
-import { useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
-import { useProfileStore }    from "@/store/profileStore";
+import { useProfileStore } from "@/store/profileStore";
 import { useAccountingStore } from "@/store/accountingStore";
-import { formatEur }          from "@/utils/formatCurrency";
-import type { SavingsGoal }   from "@/types/profile";
-import type { ExpenseLine }   from "@/types/accounting";
-
-// ── Catégories considérées comme non-essentielles (optimisables) ──────────────
-const NON_ESSENTIAL_CATEGORIES = new Set([
-  "leisure", "clothing", "gifts", "subscriptions", "other",
-]);
-
-// Catégories partiellement optimisables (on suggère 30% de réduction)
-const PARTIAL_CATEGORIES = new Set([
-  "food", "transport", "telecom",
-]);
+import { formatEur } from "@/utils/formatCurrency";
+import type { SavingsGoal } from "@/types/profile";
+import {
+  buildLifeGoalProjection,
+  goalKindLabel,
+  goalRiskTone,
+  type LifeGoalProjection,
+} from "@/services/lifeGoalProjection";
 
 const GOAL_COLORS = [
-  "var(--brand-2)", "#8b5cf6", "var(--fin-green)", "var(--fin-amber)", "#ec4899",
-  "#f59e0b", "#06b6d4", "#84cc16",
+  "var(--brand-2)",
+  "#8b5cf6",
+  "var(--fin-green)",
+  "var(--fin-amber)",
+  "#ec4899",
+  "#f59e0b",
+  "#06b6d4",
+  "#84cc16",
 ];
 
 const GOAL_PRESETS = [
-  { label: "Apport immobilier",     icon: "🏠", amount: 30000, color: "var(--brand-2)" },
-  { label: "Vacances",              icon: "✈️", amount: 2000,  color: "var(--fin-amber)" },
-  { label: "Voiture",               icon: "🚗", amount: 10000, color: "#8b5cf6" },
-  { label: "Épargne de précaution", icon: "🛡️", amount: 5000,  color: "var(--fin-green)" },
-  { label: "Travaux",               icon: "🔨", amount: 15000, color: "#f59e0b" },
-  { label: "Retraite anticipée",    icon: "🌅", amount: 50000, color: "#ec4899" },
+  { label: "Apport immobilier",     icon: "🏠", amount: 30000, color: "var(--brand-2)", months: 36 },
+  { label: "Épargne de précaution", icon: "🛡️", amount: 5000,  color: "var(--fin-green)", months: 18 },
+  { label: "Voiture",               icon: "🚗", amount: 10000, color: "#8b5cf6", months: 30 },
+  { label: "Vacances",              icon: "✈️", amount: 2000,  color: "var(--fin-amber)", months: 12 },
+  { label: "Travaux",               icon: "🔨", amount: 15000, color: "#f59e0b", months: 36 },
+  { label: "Remboursement crédit",  icon: "🏦", amount: 6000,  color: "#06b6d4", months: 24 },
 ];
 
-// ── Analyse des dépenses optimisables ─────────────────────────────────────────
-function analyzeOptimizable(
-  expenses: ExpenseLine[],
-  _targetMonthly: number,
-): {
-  totalOptimizable: number;
-  items: { label: string; category: string; current: number; suggested: number; saving: number }[];
-} {
-  const items: { label: string; category: string; current: number; suggested: number; saving: number }[] = [];
-  let totalOptimizable = 0;
-
-  for (const exp of expenses) {
-    if (exp.monthlyAmount <= 0) continue;
-
-    if (NON_ESSENTIAL_CATEGORIES.has(exp.category)) {
-      // Suggérer de supprimer ou réduire de 50%
-      const saving = exp.monthlyAmount * 0.5;
-      items.push({
-        label:     exp.label,
-        category:  exp.category,
-        current:   exp.monthlyAmount,
-        suggested: exp.monthlyAmount * 0.5,
-        saving,
-      });
-      totalOptimizable += saving;
-    } else if (PARTIAL_CATEGORIES.has(exp.category)) {
-      // Suggérer 15% de réduction
-      const saving = exp.monthlyAmount * 0.15;
-      if (saving >= 10) {
-        items.push({
-          label:     exp.label,
-          category:  exp.category,
-          current:   exp.monthlyAmount,
-          suggested: exp.monthlyAmount * 0.85,
-          saving,
-        });
-        totalOptimizable += saving;
-      }
-    }
-  }
-
-  // Trier par économie potentielle décroissante
-  items.sort((a, b) => b.saving - a.saving);
-
-  return { totalOptimizable, items };
+function addMonthsIso(months: number): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
 }
 
-// ── Composant principal ───────────────────────────────────────────────────────
+function monthCountLabel(months: number | null): string {
+  if (months === null) return "Horizon trop long";
+  if (months === 0) return "Déjà atteint";
+  if (months < 12) return `${months} mois`;
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  if (rest === 0) return years === 1 ? "1 an" : `${years} ans`;
+  return `${years} an${years > 1 ? "s" : ""} et ${rest} mois`;
+}
+
+function riskClass(tone: ReturnType<typeof goalRiskTone>): string {
+  switch (tone) {
+    case "green": return "text-fin-green";
+    case "amber": return "text-fin-amber";
+    case "red": return "text-fin-red";
+    case "blue": return "text-brand-mid";
+  }
+}
+
+function riskStyle(tone: ReturnType<typeof goalRiskTone>): { background: string; border: string } {
+  switch (tone) {
+    case "green": return { background: "var(--fin-green-dim)", border: "1px solid rgba(16,217,168,0.22)" };
+    case "amber": return { background: "var(--fin-amber-dim)", border: "1px solid rgba(245,158,11,0.24)" };
+    case "red": return { background: "var(--fin-red-dim)", border: "1px solid rgba(244,63,94,0.22)" };
+    case "blue": return { background: "rgba(14,165,233,0.08)", border: "1px solid var(--border-brand)" };
+  }
+}
+
+function dateLabel(value?: string): string {
+  if (!value) return "Aucune date cible";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "Date cible invalide";
+  return d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+}
+
+function buildGoalPayload(params: {
+  label: string;
+  targetAmount: number;
+  currentAmount: number;
+  monthlyContribution: number;
+  targetDate: string;
+  color: string;
+}): Omit<SavingsGoal, "id"> {
+  const base = {
+    label: params.label.trim(),
+    targetAmount: Math.max(0, params.targetAmount),
+    currentAmount: Math.max(0, params.currentAmount),
+    monthlyContribution: Math.max(0, params.monthlyContribution),
+    color: params.color,
+  };
+
+  if (params.targetDate.trim().length > 0) {
+    return { ...base, targetDate: params.targetDate };
+  }
+
+  return base;
+}
+
 export function GoalsPanel() {
   const { profile, addGoal, updateGoal, removeGoal } = useProfileStore();
-  const accounting   = useAccountingStore();
-  const budget       = accounting.getBudget();
-  const expenses     = accounting.expenses;
-  const goals        = profile.savingsGoals ?? [];
+  const accounting = useAccountingStore();
+  const budget = accounting.getBudget();
+  const expenses = accounting.expenses;
+  const goals = profile.savingsGoals ?? [];
 
-  const [showForm,        setShowForm]        = useState(false);
-  const [editId,          setEditId]          = useState<string | null>(null);
-  const [expandedGoalId,  setExpandedGoalId]  = useState<string | null>(null);
-  const [showOptimizer,   setShowOptimizer]   = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null);
 
-  // Budget disponible non alloué
-  const totalAllocated = goals.reduce((s, g) => s + g.monthlyContribution, 0);
-  const available = Math.max(0, budget.balanceMonthly - totalAllocated);
+  const projections = useMemo(() => {
+    const map = new Map<string, LifeGoalProjection>();
+    for (const goal of goals) {
+      map.set(goal.id, buildLifeGoalProjection(goal, budget, expenses));
+    }
+    return map;
+  }, [budget, expenses, goals]);
+
+  const totalAllocated = goals.reduce((sum, goal) => sum + goal.monthlyContribution, 0);
+  const realCapacity = Math.max(0, budget.balanceMonthly);
+  const availableAfterGoals = realCapacity - totalAllocated;
+  const editingGoal = editId ? goals.find((goal) => goal.id === editId) : undefined;
 
   return (
     <div className="space-y-5">
+      <section className="card p-5 overflow-hidden relative">
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: "linear-gradient(90deg, var(--brand-1), var(--brand-2), var(--fin-green))" }}
+        />
+        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-ink-muted">Objectifs de vie</p>
+            <h2 className="mt-1 text-xl font-black text-ink-primary">Projeter ce que tu veux atteindre</h2>
+            <p className="mt-1 text-sm text-ink-secondary max-w-2xl">
+              La projection utilise le reste à vivre réel, les dépenses importées, les crédits qui se terminent et les économies possibles.
+            </p>
+          </div>
 
-      {/* ── En-tête ── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-ink-primary">
-            {goals.length} objectif{goals.length !== 1 ? "s" : ""} actif{goals.length !== 1 ? "s" : ""}
-          </p>
-          <p className="text-xs text-ink-muted mt-0.5">
-            Solde disponible non alloué : <span className={clsx(
-              "font-mono font-semibold",
-              available >= 0 ? "text-fin-green" : "text-fin-red"
-            )}>{formatEur(available)}/mois</span>
-          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setEditId(null);
+              setShowForm(true);
+              setExpandedGoalId(null);
+            }}
+            className="btn-brand text-sm self-start xl:self-auto"
+          >
+            Nouvel objectif
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => { setShowForm(true); setEditId(null); }}
-          className="btn-brand text-sm"
-        >
-          <svg viewBox="0 0 14 14" fill="currentColor" className="w-3.5 h-3.5">
-            <path d="M7 1.75a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5H1.75a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 7 1.75Z"/>
-          </svg>
-          Nouvel objectif
-        </button>
-      </div>
 
-      {/* ── Formulaire création/édition ── */}
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <MetricCard label="Capacité réelle" value={`${formatEur(realCapacity)}/mois`} tone={realCapacity > 0 ? "green" : "red"} />
+          <MetricCard label="Alloué aux objectifs" value={`${formatEur(totalAllocated)}/mois`} tone="blue" />
+          <MetricCard
+            label="Disponible après objectifs"
+            value={`${formatEur(availableAfterGoals)}/mois`}
+            tone={availableAfterGoals >= 0 ? "green" : "amber"}
+          />
+        </div>
+      </section>
+
       <AnimatePresence>
         {showForm && (
           <motion.div
@@ -146,132 +185,107 @@ export function GoalsPanel() {
             className="overflow-hidden"
           >
             <GoalForm
-              {...(() => { const g = editId ? goals.find((x) => x.id === editId) : undefined; return g ? { initialGoal: g } : {}; })()}
-              availableMonthly={available}
+              initialGoal={editingGoal}
+              realCapacity={realCapacity}
               onSave={(data) => {
-                if (editId) updateGoal(editId, data);
-                else addGoal(data);
+                if (editId) {
+                  updateGoal(editId, data);
+                } else {
+                  addGoal(data);
+                }
                 setShowForm(false);
                 setEditId(null);
               }}
-              onCancel={() => { setShowForm(false); setEditId(null); }}
+              onCancel={() => {
+                setShowForm(false);
+                setEditId(null);
+              }}
             />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Presets si aucun objectif ── */}
       {goals.length === 0 && !showForm && (
-        <div>
-          <p className="text-xs text-ink-muted mb-3">Choisissez un objectif type pour démarrer :</p>
-          <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-            {GOAL_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                onClick={() => {
-                  const safeContribution = Math.max(0, Math.min(Math.round(available * 0.3), Math.round(preset.amount / 12)));
-                  setShowForm(false);
-                  setEditId(null);
-                  setExpandedGoalId(null);
-                  setShowOptimizer(null);
-                  addGoal({
-                    label:               preset.label,
-                    targetAmount:        preset.amount,
-                    currentAmount:       0,
-                    monthlyContribution: safeContribution,
-                    color:               preset.color,
-                  });
-                }}
-                className="card p-4 text-left hover:border-brand-mid transition-all group"
-              >
-                <span className="text-2xl block mb-2">{preset.icon}</span>
-                <p className="text-sm font-semibold text-ink-primary">{preset.label}</p>
-                <p className="text-xs text-ink-muted mt-0.5">{formatEur(preset.amount)}</p>
-              </button>
-            ))}
-          </div>
-        </div>
+        <PresetGrid
+          realCapacity={realCapacity}
+          onCreate={(preset) => {
+            const monthlyContribution = realCapacity > 0
+              ? Math.max(25, Math.min(Math.round(realCapacity * 0.35), Math.ceil(preset.amount / preset.months)))
+              : 0;
+
+            addGoal({
+              label: preset.label,
+              targetAmount: preset.amount,
+              currentAmount: 0,
+              monthlyContribution,
+              targetDate: addMonthsIso(preset.months),
+              color: preset.color,
+            });
+          }}
+        />
       )}
 
-      {/* ── Liste des objectifs ── */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         {goals.map((goal) => {
-          const remaining  = Math.max(0, goal.targetAmount - goal.currentAmount);
-          const pct        = goal.targetAmount > 0 ? Math.min(1, goal.currentAmount / goal.targetAmount) : 0;
-          const monthsLeft = goal.monthlyContribution > 0
-            ? Math.ceil(remaining / goal.monthlyContribution)
-            : null;
+          const projection = projections.get(goal.id);
+          if (!projection) return null;
+          const remaining = projection.remainingAmount;
+          const pct = goal.targetAmount > 0 ? Math.min(1, goal.currentAmount / goal.targetAmount) : 0;
           const isExpanded = expandedGoalId === goal.id;
-
-          // Analyse optimizer pour ce goal
-          const optimizer = showOptimizer === goal.id
-            ? analyzeOptimizable(expenses, goal.monthlyContribution)
-            : null;
-
-          // Date estimée d'atteinte
-          let targetDateStr = "–";
-          if (monthsLeft !== null && monthsLeft < 999) {
-            const d = new Date();
-            d.setMonth(d.getMonth() + monthsLeft);
-            targetDateStr = d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
-          }
-
-          // Combien manque-t-il par rapport au budget dispo ?
-          const shortfall = goal.monthlyContribution - available;
-          const needsMore = shortfall > 10 && goal.monthlyContribution > 0;
+          const tone = goalRiskTone(projection.risk);
 
           return (
-            <motion.div
+            <motion.article
               key={goal.id}
-              initial={{ opacity: 0, y: 6 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.16 }}
               className="card overflow-hidden"
             >
-              {/* ── Ligne principale ── */}
-              <div
-                className="px-5 py-4 cursor-pointer"
+              <button
+                type="button"
                 onClick={() => setExpandedGoalId(isExpanded ? null : goal.id)}
+                className="w-full text-left px-5 py-4"
               >
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: goal.color }} />
-                    <p className="text-sm font-semibold text-ink-primary">{goal.label}</p>
-                    {pct >= 1 && (
-                      <span className="badge-base badge-green text-2xs">Atteint !</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs font-mono text-ink-muted">
-                      {formatEur(goal.currentAmount)} / {formatEur(goal.targetAmount)}
-                    </span>
-                    <svg
-                      viewBox="0 0 14 14" fill="currentColor"
-                      className={clsx("w-3.5 h-3.5 text-ink-muted transition-transform", isExpanded && "rotate-180")}
-                    >
-                      <path d="M2 4.5L7 9.5L12 4.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-                    </svg>
-                  </div>
-                </div>
+                <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: goal.color }} />
+                      <h3 className="text-base font-black text-ink-primary truncate">{goal.label}</h3>
+                      <span className="badge-base text-2xs" style={riskStyle(tone)}>
+                        {goalKindLabel(projection.goalKind)}
+                      </span>
+                      <span className={clsx("badge-base text-2xs", riskClass(tone))} style={riskStyle(tone)}>
+                        {projection.headline}
+                      </span>
+                    </div>
 
-                {/* Barre de progression */}
-                <div className="progress-track">
-                  <motion.div
-                    className="progress-fill"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${pct * 100}%` }}
-                    transition={{ duration: 0.8, ease: "easeOut" }}
-                    style={{ background: `linear-gradient(90deg, ${goal.color}88, ${goal.color})` }}
-                  />
-                </div>
-                <div className="flex justify-between text-2xs text-ink-muted mt-1.5">
-                  <span>{(pct * 100).toFixed(0)}% atteint</span>
-                  <span>{formatEur(remaining)} restant</span>
-                </div>
-              </div>
+                    <div className="progress-track">
+                      <motion.div
+                        className="progress-fill"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct * 100}%` }}
+                        transition={{ duration: 0.7, ease: "easeOut" }}
+                        style={{ background: `linear-gradient(90deg, ${goal.color}88, ${goal.color})` }}
+                      />
+                    </div>
 
-              {/* ── Détail expansible ── */}
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
+                      <span>{Math.round(pct * 100)} % atteint</span>
+                      <span>{formatEur(remaining)} restant</span>
+                      <span>Date cible : {dateLabel(goal.targetDate)}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-2 gap-2 xl:w-[360px]">
+                    <MiniMetric label="Actuel" value={`${formatEur(goal.currentAmount)} / ${formatEur(goal.targetAmount)}`} />
+                    <MiniMetric label="Rythme réel" value={`${formatEur(projection.realisticMonthlyContribution)}/mois`} />
+                    <MiniMetric label="Projection" value={monthCountLabel(projection.projectedMonths)} />
+                    <MiniMetric label="Date estimée" value={projection.projectedDateLabel ?? "Non atteignable"} />
+                  </div>
+                </div>
+              </button>
+
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
@@ -281,160 +295,17 @@ export function GoalsPanel() {
                     transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    <div className="px-5 pb-4 space-y-4" style={{ borderTop: "1px solid var(--border)" }}>
+                    <div className="px-5 pb-5 space-y-4" style={{ borderTop: "1px solid var(--border)" }}>
+                      <ProjectionDetails projection={projection} />
 
-                      {/* Infos projection */}
-                      <div className="pt-3 grid grid-cols-2 gap-3">
-                        <div className="card-alt rounded-lg p-3">
-                          <p className="text-2xs text-ink-muted">Contribution mensuelle</p>
-                          <p className="text-sm font-mono font-semibold text-ink-primary mt-0.5">
-                            {formatEur(goal.monthlyContribution)}/mois
-                          </p>
-                        </div>
-                        <div className="card-alt rounded-lg p-3">
-                          <p className="text-2xs text-ink-muted">Date d'atteinte estimée</p>
-                          <p className="text-sm font-semibold text-ink-primary mt-0.5">
-                            {monthsLeft !== null
-                              ? `${targetDateStr} (${monthsLeft} mois)`
-                              : "Non définie"
-                            }
-                          </p>
-                        </div>
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        <TargetDateCard projection={projection} />
+                        <CreditReliefCard projection={projection} />
                       </div>
 
-                      {/* Alerte si on n'a pas assez de budget */}
-                      {needsMore && (
-                        <div
-                          className="rounded-lg p-3 text-sm"
-                          style={{ background: "var(--fin-amber-dim)", border: "1px solid rgba(245,158,11,0.2)" }}
-                        >
-                          <p className="font-semibold text-fin-amber text-xs">
-                            Manque {formatEur(shortfall)}/mois pour financer cet objectif
-                          </p>
-                          <p className="text-xs text-ink-secondary mt-1">
-                            Votre solde disponible actuel ne couvre pas la contribution prévue.
-                          </p>
-                        </div>
-                      )}
+                      <ActionsCard projection={projection} />
 
-                      {/* ── OPTIMISEUR : Trouver comment financer ── */}
-                      {expenses.length > 0 && (
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => setShowOptimizer(showOptimizer === goal.id ? null : goal.id)}
-                            className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-all"
-                            style={{
-                              background: "linear-gradient(135deg, rgba(6,214,160,0.07), rgba(14,165,233,0.07))",
-                              border: "1px solid var(--border-brand)",
-                            }}
-                          >
-                            <span className="flex items-center gap-2">
-                              <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-brand-mid flex-shrink-0">
-                                <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1ZM6.5 6.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM8 11a3 3 0 0 1-2.83-2H5a.5.5 0 0 1 0-1h.17A3.001 3.001 0 0 1 11 9.5h.5a.5.5 0 0 1 0 1H11A3 3 0 0 1 8 11Z"/>
-                              </svg>
-                              <span className="text-ink-primary">
-                                Comment financer <strong>{goal.label}</strong> ?
-                              </span>
-                            </span>
-                            <svg
-                              viewBox="0 0 14 14" fill="currentColor"
-                              className={clsx("w-3.5 h-3.5 text-ink-muted transition-transform flex-shrink-0", showOptimizer === goal.id && "rotate-180")}
-                            >
-                              <path d="M2 4.5L7 9.5L12 4.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-                            </svg>
-                          </button>
-
-                          {/* Résultats de l'optimiseur */}
-                          <AnimatePresence>
-                            {optimizer && (
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: "auto", opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                className="overflow-hidden"
-                              >
-                                <div className="mt-3 space-y-3">
-                                  {/* Résumé */}
-                                  <div
-                                    className="rounded-lg p-4"
-                                    style={{ background: "var(--fin-green-dim)", border: "1px solid rgba(16,217,168,0.2)" }}
-                                  >
-                                    <p className="text-xs font-semibold text-fin-green mb-1">
-                                      Potentiel d'économies identifié
-                                    </p>
-                                    <p className="text-2xl font-mono font-bold text-fin-green">
-                                      {formatEur(optimizer.totalOptimizable)}<span className="text-sm font-normal text-ink-secondary">/mois</span>
-                                    </p>
-                                    {optimizer.totalOptimizable >= goal.monthlyContribution ? (
-                                      <p className="text-xs text-ink-secondary mt-1">
-                                        ✓ Suffisant pour financer {formatEur(goal.monthlyContribution)}/mois vers <strong>{goal.label}</strong>
-                                      </p>
-                                    ) : (
-                                      <p className="text-xs text-ink-secondary mt-1">
-                                        Couvre {Math.round(optimizer.totalOptimizable / goal.monthlyContribution * 100)}% de votre objectif de {formatEur(goal.monthlyContribution)}/mois
-                                      </p>
-                                    )}
-                                  </div>
-
-                                  {/* Liste des dépenses à optimiser */}
-                                  {optimizer.items.length > 0 ? (
-                                    <div className="space-y-2">
-                                      <p className="text-xs font-semibold text-ink-secondary">
-                                        Dépenses à réduire en priorité :
-                                      </p>
-                                      {optimizer.items.slice(0, 5).map((item, i) => (
-                                        <div
-                                          key={i}
-                                          className="flex items-center justify-between px-3 py-2.5 rounded-lg"
-                                          style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}
-                                        >
-                                          <div className="min-w-0 flex-1">
-                                            <p className="text-xs font-medium text-ink-primary truncate">{item.label}</p>
-                                            <p className="text-2xs text-ink-muted">
-                                              {NON_ESSENTIAL_CATEGORIES.has(item.category as string)
-                                                ? `Réduire de 50% : ${formatEur(item.current)} → ${formatEur(item.suggested)}/mois`
-                                                : `Réduire de 15% : ${formatEur(item.current)} → ${formatEur(item.suggested)}/mois`
-                                              }
-                                            </p>
-                                          </div>
-                                          <span className="text-sm font-mono font-bold text-fin-green ml-3 flex-shrink-0">
-                                            − {formatEur(item.saving)}/mois
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <p className="text-xs text-ink-muted text-center py-3">
-                                      Aucune dépense non-essentielle détectée dans vos comptes.
-                                      Ajoutez vos dépenses dans l'onglet "Dépenses" pour une analyse complète.
-                                    </p>
-                                  )}
-
-                                  {/* Accélération possible */}
-                                  {monthsLeft !== null && monthsLeft > 1 && optimizer.totalOptimizable > 0 && (
-                                    <div
-                                      className="rounded-lg px-4 py-3"
-                                      style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}
-                                    >
-                                      <p className="text-xs text-ink-secondary">
-                                        En économisant ces <strong className="text-fin-green">{formatEur(optimizer.totalOptimizable)}/mois</strong>, vous atteindriez <strong>{goal.label}</strong> en{" "}
-                                        <strong className="text-ink-primary">
-                                          {Math.ceil(remaining / (goal.monthlyContribution + optimizer.totalOptimizable))} mois
-                                        </strong>{" "}
-                                        au lieu de {monthsLeft} mois.
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      )}
-
-                      {/* ── Actions : Modifier / Supprimer ── */}
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2 pt-1">
                         <button
                           type="button"
                           onClick={() => {
@@ -444,16 +315,16 @@ export function GoalsPanel() {
                           }}
                           className="btn-secondary flex-1 text-xs"
                         >
-                          Modifier
+                          Modifier l’objectif
                         </button>
                         <button
                           type="button"
                           onClick={() => removeGoal(goal.id)}
-                          className="px-4 py-2.5 text-xs font-medium rounded-lg transition-all"
+                          className="px-4 py-2.5 text-xs font-bold rounded-lg transition-all"
                           style={{
                             background: "var(--fin-red-dim)",
                             color: "var(--fin-red)",
-                            border: "1px solid rgba(244,63,94,0.2)",
+                            border: "1px solid rgba(244,63,94,0.22)",
                           }}
                         >
                           Supprimer
@@ -463,176 +334,317 @@ export function GoalsPanel() {
                   </motion.div>
                 )}
               </AnimatePresence>
-            </motion.div>
+            </motion.article>
           );
         })}
       </div>
+    </div>
+  );
+}
 
-      {/* ── Total alloué ── */}
-      {goals.length > 0 && (
-        <div
-          className="rounded-xl px-5 py-4"
-          style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}
-        >
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-ink-secondary">Total alloué aux objectifs</span>
-            <span className="font-mono font-semibold text-ink-primary">{formatEur(totalAllocated)}/mois</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-ink-muted">Disponible non alloué</span>
-            <span className={clsx(
-              "font-mono font-semibold",
-              available >= 0 ? "text-fin-green" : "text-fin-red"
-            )}>
-              {formatEur(available)}/mois
-            </span>
-          </div>
+function MetricCard({ label, value, tone }: { label: string; value: string; tone: "green" | "amber" | "red" | "blue" }) {
+  const colorClass = tone === "green"
+    ? "text-fin-green"
+    : tone === "amber"
+      ? "text-fin-amber"
+      : tone === "red"
+        ? "text-fin-red"
+        : "text-brand-mid";
+
+  return (
+    <div className="card-alt rounded-xl p-4">
+      <p className="text-2xs font-bold uppercase tracking-widest text-ink-muted">{label}</p>
+      <p className={clsx("mt-1 font-mono text-lg font-black", colorClass)}>{value}</p>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl p-3" style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}>
+      <p className="text-[10px] font-bold uppercase tracking-widest text-ink-muted">{label}</p>
+      <p className="mt-1 text-xs font-bold text-ink-primary leading-snug">{value}</p>
+    </div>
+  );
+}
+
+function PresetGrid({
+  realCapacity,
+  onCreate,
+}: {
+  realCapacity: number;
+  onCreate: (preset: (typeof GOAL_PRESETS)[number]) => void;
+}) {
+  return (
+    <section className="card p-5">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h3 className="text-sm font-black text-ink-primary">Démarrer avec un objectif type</h3>
+          <p className="text-xs text-ink-muted mt-1">
+            Contribution proposée selon ta capacité réelle actuelle : {formatEur(Math.max(0, realCapacity * 0.35))}/mois environ.
+          </p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+        {GOAL_PRESETS.map((preset) => (
+          <button
+            key={preset.label}
+            type="button"
+            onClick={() => onCreate(preset)}
+            className="card-alt p-4 text-left hover:border-brand-mid transition-all group rounded-xl"
+          >
+            <span className="text-2xl block mb-2">{preset.icon}</span>
+            <p className="text-sm font-bold text-ink-primary">{preset.label}</p>
+            <p className="text-xs text-ink-muted mt-1">{formatEur(preset.amount)} · cible {monthCountLabel(preset.months)}</p>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProjectionDetails({ projection }: { projection: LifeGoalProjection }) {
+  const tone = goalRiskTone(projection.risk);
+
+  return (
+    <div className="pt-4 rounded-xl p-4" style={riskStyle(tone)}>
+      <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+        <div>
+          <p className={clsx("text-sm font-black", riskClass(tone))}>{projection.headline}</p>
+          <p className="mt-1 text-sm text-ink-secondary">{projection.explanation}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 xl:min-w-[320px]">
+          <MiniMetric label="Manque" value={formatEur(projection.remainingAmount)} />
+          <MiniMetric label="Capacité réelle" value={`${formatEur(projection.realMonthlyCapacity)}/mois`} />
+          <MiniMetric label="Optimisé" value={`${formatEur(projection.optimizedMonthlyContribution)}/mois`} />
+          <MiniMetric label="Gain possible" value={formatEur(Math.max(0, projection.optimizedMonthlyContribution - projection.realisticMonthlyContribution))} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TargetDateCard({ projection }: { projection: LifeGoalProjection }) {
+  if (projection.targetMonths === null || projection.requiredMonthlyForTarget === null) {
+    return (
+      <div className="card-alt rounded-xl p-4">
+        <p className="text-xs font-black text-ink-primary">Projection sans date cible</p>
+        <p className="mt-1 text-sm text-ink-secondary">
+          Ajoute une date cible pour savoir combien il faudrait épargner chaque mois.
+        </p>
+      </div>
+    );
+  }
+
+  const gap = projection.monthlyGapForTarget ?? 0;
+
+  return (
+    <div className="card-alt rounded-xl p-4">
+      <p className="text-xs font-black text-ink-primary">Date cible</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <MiniMetric label="Temps restant" value={monthCountLabel(projection.targetMonths)} />
+        <MiniMetric label="Requis" value={`${formatEur(projection.requiredMonthlyForTarget)}/mois`} />
+      </div>
+      <p className={clsx("mt-3 text-sm", gap > 0 ? "text-fin-amber" : "text-fin-green")}>
+        {gap > 0
+          ? `Il manque environ ${formatEur(gap)}/mois pour tenir cette date.`
+          : "La contribution réaliste actuelle permet de tenir la date cible."
+        }
+      </p>
+    </div>
+  );
+}
+
+function CreditReliefCard({ projection }: { projection: LifeGoalProjection }) {
+  return (
+    <div className="card-alt rounded-xl p-4">
+      <p className="text-xs font-black text-ink-primary">Projection optimisée</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <MiniMetric label="Durée optimisée" value={monthCountLabel(projection.optimizedMonths)} />
+        <MiniMetric label="Date optimisée" value={projection.optimizedDateLabel ?? "Non atteignable"} />
+      </div>
+      <p className="mt-3 text-sm text-ink-secondary">
+        {projection.firstCreditReliefMonth !== null && projection.firstCreditReliefAmount > 0
+          ? `Un crédit libère ${formatEur(projection.firstCreditReliefAmount)}/mois dans ${projection.firstCreditReliefMonth} mois.`
+          : "Aucune fin de crédit proche n’est actuellement détectée pour accélérer automatiquement cet objectif."
+        }
+      </p>
+    </div>
+  );
+}
+
+function ActionsCard({ projection }: { projection: LifeGoalProjection }) {
+  return (
+    <div className="card-alt rounded-xl p-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+        <div>
+          <p className="text-xs font-black text-ink-primary">Actions proposées</p>
+          <p className="text-xs text-ink-muted mt-0.5">Maximum 5 pistes, triées par impact mensuel.</p>
+        </div>
+        <span className="badge-base badge-green text-2xs">
+          + {formatEur(projection.actions.reduce((sum, action) => sum + action.monthlyGain, 0))}/mois
+        </span>
+      </div>
+
+      {projection.actions.length > 0 ? (
+        <div className="space-y-2">
+          {projection.actions.map((action) => (
+            <div
+              key={action.id}
+              className="flex items-start justify-between gap-3 rounded-xl p-3"
+              style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-ink-primary">{action.label}</p>
+                <p className="text-xs text-ink-muted mt-0.5">{action.detail}</p>
+              </div>
+              <span className="text-sm font-mono font-black text-fin-green whitespace-nowrap">
+                + {formatEur(action.monthlyGain)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-ink-secondary">
+          Aucune action automatique fiable n’est détectée. La priorité est de stabiliser le solde mensuel avant d’accélérer cet objectif.
+        </p>
       )}
     </div>
   );
 }
 
-// ── Formulaire création/édition ───────────────────────────────────────────────
 function GoalForm({
   initialGoal,
-  availableMonthly,
+  realCapacity,
   onSave,
   onCancel,
 }: {
-  initialGoal?:      SavingsGoal;
-  availableMonthly:  number;
-  onSave:            (data: Omit<SavingsGoal, "id">) => void;
-  onCancel:          () => void;
+  initialGoal: SavingsGoal | undefined;
+  realCapacity: number;
+  onSave: (data: Omit<SavingsGoal, "id">) => void;
+  onCancel: () => void;
 }) {
-  const [label,         setLabel]        = useState(initialGoal?.label         ?? "");
-  const [targetAmount,  setTargetAmount] = useState(initialGoal?.targetAmount  ?? 5000);
-  const [currentAmount, setCurrent]      = useState(initialGoal?.currentAmount ?? 0);
-  const [monthly,       setMonthly]      = useState<number>(
-    initialGoal?.monthlyContribution ?? Math.max(50, Math.round(availableMonthly * 0.3))
+  const [label, setLabel] = useState(initialGoal?.label ?? "");
+  const [targetAmount, setTargetAmount] = useState(initialGoal?.targetAmount ?? 5000);
+  const [currentAmount, setCurrentAmount] = useState(initialGoal?.currentAmount ?? 0);
+  const [monthlyContribution, setMonthlyContribution] = useState(
+    initialGoal?.monthlyContribution ?? Math.max(0, Math.round(realCapacity * 0.35)),
   );
-  const [color,         setColor]        = useState<string>(
-    initialGoal?.color ?? GOAL_COLORS[0] ?? "var(--brand-2)"
-  );
+  const [targetDate, setTargetDate] = useState(initialGoal?.targetDate ?? "");
+  const [color, setColor] = useState(initialGoal?.color ?? GOAL_COLORS[0] ?? "var(--brand-2)");
 
-  const remaining  = Math.max(0, targetAmount - currentAmount);
-  const monthsLeft = monthly > 0 ? Math.ceil(remaining / monthly) : null;
+  const remaining = Math.max(0, targetAmount - currentAmount);
+  const monthsLeft = monthlyContribution > 0 ? Math.ceil(remaining / monthlyContribution) : null;
+  const canSave = label.trim().length > 1 && targetAmount > 0 && currentAmount >= 0 && monthlyContribution >= 0;
 
   return (
-    <div
-      className="rounded-xl p-5 space-y-4"
-      style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}
+    <form
+      className="card p-5 space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!canSave) return;
+        onSave(buildGoalPayload({ label, targetAmount, currentAmount, monthlyContribution, targetDate, color }));
+      }}
     >
-      <p className="text-sm font-semibold text-ink-primary">
-        {initialGoal ? "Modifier l'objectif" : "Nouvel objectif"}
-      </p>
-
-      <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <label className="block text-xs font-medium text-ink-secondary mb-1.5">Nom de l'objectif</label>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-ink-muted">
+            {initialGoal ? "Modifier" : "Nouvel objectif"}
+          </p>
+          <h3 className="text-lg font-black text-ink-primary">Objectif de vie</h3>
+        </div>
+        <button type="button" onClick={onCancel} className="btn-mini">Fermer</button>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <FormField label="Nom de l’objectif">
           <input
-            type="text"
             value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="Ex : Voyage au Japon, Apport immobilier..."
+            onChange={(event) => setLabel(event.target.value)}
+            className="input-premium"
+            placeholder="Ex : Apport immobilier"
+          />
+        </FormField>
+
+        <FormField label="Date cible optionnelle">
+          <input
+            type="date"
+            value={targetDate}
+            onChange={(event) => setTargetDate(event.target.value)}
             className="input-premium"
           />
-        </div>
+        </FormField>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-ink-secondary mb-1.5">Montant cible (€)</label>
-            <input
-              type="number" min={0} value={targetAmount}
-              onChange={(e) => setTargetAmount(parseFloat(e.target.value) || 0)}
-              className="input-premium"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-ink-secondary mb-1.5">Déjà épargné (€)</label>
-            <input
-              type="number" min={0} value={currentAmount}
-              onChange={(e) => setCurrent(parseFloat(e.target.value) || 0)}
-              className="input-premium"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-ink-secondary mb-1.5">
-            Contribution mensuelle — disponible : {formatEur(availableMonthly)}
-          </label>
+        <FormField label="Montant cible">
           <input
-            type="range"
+            type="number"
             min={0}
-            max={Math.max(monthly + 50, availableMonthly, 500)}
-            step={10}
-            value={monthly}
-            onChange={(e) => setMonthly(parseFloat(e.target.value))}
-            className="w-full accent-brand-mid"
+            value={targetAmount}
+            onChange={(event) => setTargetAmount(Number(event.target.value))}
+            className="input-premium"
           />
-          <div className="flex justify-between text-2xs text-ink-muted mt-1">
-            <span>0 €</span>
-            <span className="font-mono font-semibold text-ink-primary">{formatEur(monthly)}/mois</span>
-            <span>{formatEur(Math.max(monthly + 50, availableMonthly, 500))}</span>
-          </div>
-        </div>
+        </FormField>
 
-        {/* Couleur */}
-        <div>
-          <label className="block text-xs font-medium text-ink-secondary mb-2">Couleur</label>
-          <div className="flex gap-2 flex-wrap">
-            {GOAL_COLORS.map((c) => (
+        <FormField label="Déjà constitué">
+          <input
+            type="number"
+            min={0}
+            value={currentAmount}
+            onChange={(event) => setCurrentAmount(Number(event.target.value))}
+            className="input-premium"
+          />
+        </FormField>
+
+        <FormField label="Contribution mensuelle prévue">
+          <input
+            type="number"
+            min={0}
+            value={monthlyContribution}
+            onChange={(event) => setMonthlyContribution(Number(event.target.value))}
+            className="input-premium"
+          />
+        </FormField>
+
+        <FormField label="Couleur">
+          <div className="flex flex-wrap gap-2 pt-1">
+            {GOAL_COLORS.map((goalColor) => (
               <button
-                key={c}
+                key={goalColor}
                 type="button"
-                onClick={() => setColor(c)}
-                className={clsx("w-7 h-7 rounded-full border-2 transition-all", color === c ? "scale-110" : "border-transparent")}
-                style={{ backgroundColor: c, borderColor: color === c ? "var(--text-primary)" : "transparent" }}
+                onClick={() => setColor(goalColor)}
+                className={clsx(
+                  "h-8 w-8 rounded-full border-2 transition-all",
+                  color === goalColor ? "scale-110" : "opacity-75 hover:opacity-100",
+                )}
+                style={{ background: goalColor, borderColor: color === goalColor ? "var(--ink-primary)" : "transparent" }}
+                aria-label={`Choisir la couleur ${goalColor}`}
               />
             ))}
           </div>
-        </div>
-
-        {/* Projection temps réel */}
-        {monthsLeft !== null && targetAmount > currentAmount && (
-          <div
-            className="rounded-lg px-4 py-3"
-            style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
-          >
-            <p className="text-xs text-ink-secondary">
-              À ce rythme, objectif atteint dans{" "}
-              <span className="font-semibold text-ink-primary">{monthsLeft} mois</span>
-              {monthsLeft > 0 && (
-                <>
-                  {" "}(
-                  {(() => {
-                    const d = new Date();
-                    d.setMonth(d.getMonth() + monthsLeft);
-                    return d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
-                  })()}
-                  )
-                </>
-              )}
-            </p>
-          </div>
-        )}
+        </FormField>
       </div>
 
-      <div className="flex justify-end gap-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+      <div className="rounded-xl p-4" style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}>
+        <p className="text-sm text-ink-secondary">
+          Projection simple : il reste <strong className="text-ink-primary">{formatEur(remaining)}</strong>. À {formatEur(monthlyContribution)}/mois,
+          l’objectif serait atteint en <strong className="text-ink-primary">{monthCountLabel(monthsLeft)}</strong>.
+        </p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2 justify-end">
         <button type="button" onClick={onCancel} className="btn-secondary">Annuler</button>
-        <button
-          type="button"
-          onClick={() => {
-            if (!label.trim()) return;
-            onSave({ label, targetAmount, currentAmount, monthlyContribution: monthly, color: color ?? "var(--brand-2)" });
-          }}
-          disabled={!label.trim()}
-          className="btn-brand disabled:opacity-40"
-        >
-          {initialGoal ? "Enregistrer" : "Créer l'objectif"}
-        </button>
+        <button type="submit" className="btn-brand" disabled={!canSave}>Enregistrer</button>
       </div>
-    </div>
+    </form>
+  );
+}
+
+function FormField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-xs font-bold uppercase tracking-widest text-ink-muted">{label}</span>
+      <div className="mt-1.5">{children}</div>
+    </label>
   );
 }

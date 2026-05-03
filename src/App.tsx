@@ -18,6 +18,8 @@
 //   2026-05-01 | KREMER Régis | Phase 13 — vérification MAJ automatique au démarrage (3s delay)
 //   2026-05-02 | KREMER Régis | Correction UX — retour automatique en haut à chaque changement de page
 //   2026-05-02 | KREMER Régis | Correction Phase 14.1 — lancement sans profil exemple et scroll du conteneur principal
+//   2026-05-03 | KREMER Régis | Phase 17 — bouton global de simulation instantanée
+//   2026-05-03 | KREMER Régis | Phase 18.1 — panneau assistant flottant premium
 // =============================================================================
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -32,6 +34,8 @@ import { useSimulationStore } from "@/store/simulationStore";
 import { useProfile } from "@/hooks/useProfile";
 import { useUpdater } from "@/hooks/useUpdater";
 import { UpdateModal } from "@/components/shared/UpdateModal";
+import { AffordabilityModal } from "@/components/shared/AffordabilityModal";
+import { AssistantFloatingPanel } from "@/components/Assistant/AssistantFloatingPanel";
 import { formatEur } from "@/utils/formatCurrency";
 import logoIcon from "@/assets/logo-icon.png";
 
@@ -162,6 +166,8 @@ export default function App() {
   const activeProfileId = useProfileListStore((state) => state.activeProfileId);
   const lockProfile     = useProfileListStore((state) => state.lock);
   const [collapsed, setCollapsed] = useState(false);
+  const [affordabilityOpen, setAffordabilityOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const mainRef = useRef<HTMLElement | null>(null);
 
   // ── Mise à jour automatique au démarrage (checkOnMount = true) ────────────
@@ -246,6 +252,13 @@ export default function App() {
         progress={updateProgress}
         onInstall={() => void installUpdate()}
         onDismiss={dismiss}
+      />
+
+      <AffordabilityModal open={affordabilityOpen} onClose={() => setAffordabilityOpen(false)} />
+      <AssistantFloatingPanel
+        open={assistantOpen}
+        onOpen={() => setAssistantOpen(true)}
+        onClose={() => setAssistantOpen(false)}
       />
 
       {/* ── SIDEBAR ──────────────────────────────────────────────────────── */}
@@ -397,7 +410,7 @@ export default function App() {
           </NavLink>
           {!collapsed && (
             <p className="px-2 pt-1 text-[10px] font-semibold" style={{ color: "var(--text-placeholder)" }}>
-              v2.0.2
+              v2.5.0
             </p>
           )}
         </div>
@@ -427,12 +440,24 @@ export default function App() {
             </span>
           </div>
 
+          <div className="ml-auto flex items-center gap-3">
+            {result && (
+              <button
+                type="button"
+                className="btn-brand hidden sm:inline-flex"
+                onClick={() => setAffordabilityOpen(true)}
+                title="Simuler un achat sans modifier vos données"
+              >
+                Puis-je me permettre ça ?
+              </button>
+            )}
+
           {result && (
             <motion.div
               initial={{ opacity: 0, x: 12 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.3 }}
-              className="ml-auto flex items-center gap-3"
+              className="flex items-center gap-3"
             >
               <div className="hidden items-center gap-2 sm:flex">
                 <span className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>SSF</span>
@@ -461,6 +486,7 @@ export default function App() {
               </div>
             </motion.div>
           )}
+          </div>
         </header>
 
         {/* Zone de contenu */}

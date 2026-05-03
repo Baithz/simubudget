@@ -129,6 +129,10 @@ export interface MonthlyExpenseLine {
   creditRemainingMonths?: number;   // Nb de mois restants ce mois-ci
   creditEndsThisMonth?:   boolean;  // true si c'est le dernier mois de ce crédit
   creditLender?:          string;   // Établissement prêteur (pour affichage)
+  // Phase 15.4 — traçabilité import bancaire
+  importedTransactionId?: string;   // ID transaction bancaire source
+  importedAt?:            string;   // Date ISO d'intégration dans Mes Comptes
+  importSource?:          string;   // Banque/source du relevé importé
 }
 
 export type IncomeType =

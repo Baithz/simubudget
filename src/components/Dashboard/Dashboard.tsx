@@ -10,6 +10,8 @@
 //   2026-04-30 | KREMER Régis | Phase 10 — design premium++, Bloomberg×Linear
 //   2026-05-01 | KREMER Régis | Phase 11 — Fix 3 : lien CAF via openExternal (Tauri)
 //   2026-05-01 | KREMER Régis | ZIP 8.3 — Recalcul automatique depuis Mes Comptes
+//   2026-05-03 | KREMER Régis | Phase 17 — actions recommandées intégrées
+//   2026-05-03 | KREMER Régis | Phase 18 — score SSF narratif intégré
 // =============================================================================
 
 import { useEffect } from "react";
@@ -21,6 +23,11 @@ import { useSimulationStore } from "@/store/simulationStore";
 import { useAccountingStore } from "@/store/accountingStore";
 import { useCalculator } from "@/hooks/useCalculator";
 import ScoreGauge from "@/components/shared/ScoreGauge";
+import { MonthlySummaryBar } from "@/components/Dashboard/MonthlySummaryBar";
+import { ProactiveAlerts } from "@/components/Dashboard/ProactiveAlerts";
+import { FinancialTimeline } from "@/components/Dashboard/FinancialTimeline";
+import { ActionItems } from "@/components/Dashboard/ActionItems";
+import { ScoreNarrative } from "@/components/Dashboard/ScoreNarrative";
 import AlertBadge from "@/components/shared/AlertBadge";
 import { formatEur } from "@/utils/formatCurrency";
 import { openExternal } from "@/utils/openExternal";
@@ -187,6 +194,18 @@ export function Dashboard() {
         </button>
       </motion.div>
 
+      <motion.div variants={stagger.item}>
+        <MonthlySummaryBar />
+      </motion.div>
+
+      <motion.div variants={stagger.item}>
+        <ProactiveAlerts />
+      </motion.div>
+
+      <motion.div variants={stagger.item}>
+        <ActionItems />
+      </motion.div>
+
       {/* ── KPIs principaux ─────────────────────────────────────────────── */}
       <motion.div variants={stagger.item} className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {/* Carte SSF */}
@@ -243,6 +262,10 @@ export function Dashboard() {
         </div>
       </motion.div>
 
+      <motion.div variants={stagger.item}>
+        <ScoreNarrative />
+      </motion.div>
+
       {/* ── Sous-scores SSF ──────────────────────────────────────────────── */}
       <motion.div variants={stagger.item}>
         <div className="card p-5">
@@ -269,6 +292,10 @@ export function Dashboard() {
             ))}
           </div>
         </div>
+      </motion.div>
+
+      <motion.div variants={stagger.item}>
+        <FinancialTimeline />
       </motion.div>
 
       {/* ── APL ──────────────────────────────────────────────────────────── */}

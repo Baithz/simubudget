@@ -6,6 +6,7 @@
 // Changelog :
 //   2026-04-26 | KREMER Régis | Création du fichier
 //   2026-04-29 | KREMER Régis | Refonte Phase 8 — thème système, taille texte, démarrage, version 1.8
+//   2026-05-03 | KREMER Régis | Phase 16 — anti-spam des alertes proactives
 // =============================================================================
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -21,12 +22,15 @@ interface UIStore {
   startPage: StartPageMode;
   notifications: boolean;
   purchaseActiveTab: number;
+  alertSnooze: Record<string, string>;
   toggleDark: () => void;
   setThemeMode: (mode: ThemeMode) => void;
   setFontSize: (size: FontSizeMode) => void;
   setStartPage: (page: StartPageMode) => void;
   setNotifications: (enabled: boolean) => void;
   setPurchaseTab: (tab: number) => void;
+  snoozeAlert: (id: string) => void;
+  clearAlertSnooze: (id: string) => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -38,6 +42,7 @@ export const useUIStore = create<UIStore>()(
       startPage: "/",
       notifications: true,
       purchaseActiveTab: 0,
+      alertSnooze: {},
       toggleDark: () => set((state) => {
         const nextDark = !state.darkMode;
         return { darkMode: nextDark, themeMode: nextDark ? "dark" : "light" };
@@ -47,6 +52,16 @@ export const useUIStore = create<UIStore>()(
       setStartPage: (startPage) => set({ startPage }),
       setNotifications: (notifications) => set({ notifications }),
       setPurchaseTab: (purchaseActiveTab) => set({ purchaseActiveTab }),
+      snoozeAlert: (id) =>
+        set((state) => ({
+          alertSnooze: { ...state.alertSnooze, [id]: new Date().toISOString() },
+        })),
+      clearAlertSnooze: (id) =>
+        set((state) => {
+          const next = { ...state.alertSnooze };
+          delete next[id];
+          return { alertSnooze: next };
+        }),
     }),
     { name: "simubudget-ui" }
   )

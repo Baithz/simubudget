@@ -61,6 +61,7 @@ interface AccountingStore {
   restoreMonthlyExpense: (id: string) => void;
   updateMonthlyExpense: (id: string, patch: Partial<Omit<MonthlyExpenseLine, "id" | "month">>) => void;
   addMonthlyExpense: (line: Omit<MonthlyExpenseLine, "id" | "status"> & { status?: MonthlyExpenseLine["status"] }) => void;
+  upsertImportedMonthlyExpense: (line: Omit<MonthlyExpenseLine, "status"> & { status?: MonthlyExpenseLine["status"] }) => string;
   closeMonth: (month?: string) => void;
   reopenMonth: (month?: string) => void;
   setEnvelopeMode: (enabled: boolean, period?: EnvelopePeriod) => void;
@@ -599,6 +600,21 @@ export const useAccountingStore = create<AccountingStore>()(
         };
         return { monthlyExpenses: [...s.monthlyExpenses, item] };
       }),
+      upsertImportedMonthlyExpense: (line) => {
+        const item: MonthlyExpenseLine = {
+          ...line,
+          status: line.status ?? "added",
+        };
+        set((s) => {
+          const exists = s.monthlyExpenses.some((existing) => existing.id === item.id);
+          return {
+            monthlyExpenses: exists
+              ? s.monthlyExpenses.map((existing) => existing.id === item.id ? { ...existing, ...item } : existing)
+              : [...s.monthlyExpenses, item],
+          };
+        });
+        return item.id;
+      },
       closeMonth: (month = get().activeMonth) => {
         // Phase 12A — décrémenter les crédits avant de figer le snapshot
         get().decrementCreditMonths();

@@ -5,6 +5,7 @@
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-05-01 | KREMER Régis | Création ZIP 6 — exploitation données avancée
+//   2026-05-03 | KREMER Régis | Phase 17 — analyse comportementale simple
 // =============================================================================
 
 import { useMemo, type ReactNode } from "react";
@@ -19,6 +20,7 @@ import { useProfileStore } from "@/store/profileStore";
 import type { MonthlySnapshot, ProfileEntry, Situation, UserProfile } from "@/types/profile";
 import { CATEGORY_LABELS, type AccountingState, type ExpenseCategory, type ExpenseLine, type IncomeLine, type MonthlyBudget } from "@/types/accounting";
 import { formatEur, formatPct } from "@/utils/formatCurrency";
+import { BehavioralInsights } from "@/components/Accounting/BehavioralInsights";
 
 interface PersistedWrapper<T> {
   state?: Partial<T>;
@@ -215,6 +217,8 @@ export function DataInsightsPanel() {
 
   return (
     <div className="space-y-5">
+      <BehavioralInsights snapshots={snapshots} expenses={accounting.expenses} monthlyExpenses={accounting.monthlyExpenses} />
+
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <InsightKpi label="Profils suivis" value={String(profileData.length)} detail={`${profileData.filter((item) => item.confidence === "complete").length} profil(s) exploitable(s)`} />
         <InsightKpi label="Solde consolidé" value={formatEur(consolidatedBalance)} detail="Somme mensuelle des profils locaux" positive={consolidatedBalance >= 0} />

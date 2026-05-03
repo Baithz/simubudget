@@ -1,6 +1,6 @@
 {
   "name": "simubudget",
-  "version": "2.0.2",
+  "version": "2.5.0",
   "description": "Copilote financier personnel - Simulateur budget France",
   "author": "KREMER Regis",
   "license": "UNLICENSED",
@@ -38,6 +38,7 @@
     "react-dom": "^18.3.0",
     "react-router-dom": "^6.26.0",
     "recharts": "^2.12.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.23.0",
     "zustand": "^4.5.0"
   },
