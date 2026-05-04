@@ -59,6 +59,7 @@ interface AccountingStore {
   validateMonthlyExpense: (id: string) => void;
   ignoreMonthlyExpense: (id: string) => void;
   restoreMonthlyExpense: (id: string) => void;
+  deleteMonthlyExpense: (id: string) => void;
   updateMonthlyExpense: (id: string, patch: Partial<Omit<MonthlyExpenseLine, "id" | "month">>) => void;
   addMonthlyExpense: (line: Omit<MonthlyExpenseLine, "id" | "status"> & { status?: MonthlyExpenseLine["status"] }) => void;
   upsertImportedMonthlyExpense: (line: Omit<MonthlyExpenseLine, "status"> & { status?: MonthlyExpenseLine["status"] }) => string;
@@ -579,6 +580,9 @@ export const useAccountingStore = create<AccountingStore>()(
       })),
       restoreMonthlyExpense: (id) => set((s) => ({
         monthlyExpenses: s.monthlyExpenses.map((line) => line.id === id ? { ...line, status: "pending" } : line),
+      })),
+      deleteMonthlyExpense: (id) => set((s) => ({
+        monthlyExpenses: s.monthlyExpenses.filter((line) => line.id !== id),
       })),
       updateMonthlyExpense: (id, patch) => set((s) => ({
         monthlyExpenses: s.monthlyExpenses.map((line) => {

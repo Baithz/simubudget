@@ -1271,19 +1271,52 @@ function EnvelopeImpactPreview({ store, category, amount }: { store: ReturnType<
 function MonthlyExpenseRow({ line, store, personName, partnerName }: { line: MonthlyExpenseLine; store: ReturnType<typeof useAccountingStore.getState>; personName: string; partnerName: string }) {
   const isClosed   = store.getMonthSummary(line.month).isClosed;
   const isEditable = !isClosed && (line.status === "pending" || line.status === "added");
+  const visibleLabel = line.displayLabel ?? line.label;
+  const rawBankLabel = line.importedRawLabel ?? line.rawBankLabel;
+  const isImported = line.importedTransactionId !== undefined || line.importSource !== undefined || rawBankLabel !== undefined;
+  const isReconciled = line.reconciliationStatus === "reconciled" || line.matchedTransactionId !== undefined;
+  const isUnplannedReal = isImported && !isReconciled && line.sourceExpenseId === undefined;
+  const canConvertToRecurring = !isClosed && line.sourceExpenseId === undefined && line.status !== "ignored";
+
+  const handleDelete = () => {
+    const confirmed = window.confirm("Êtes-vous sûr de vouloir supprimer cette ligne ?\n\nCette action retirera la dépense du mois courant.");
+    if (!confirmed) return;
+    store.deleteMonthlyExpense(line.id);
+  };
+
+  const handleMakeRecurring = () => {
+    const confirmed = window.confirm(`Transformer "${visibleLabel}" en charge récurrente mensuelle ?`);
+    if (!confirmed) return;
+    store.addExpense({
+      label: visibleLabel,
+      category: line.category,
+      amount: line.realAmount ?? line.amount,
+      frequency: "monthly",
+      isFixed: true,
+      isMandatory: line.isMandatory,
+      owner: line.owner,
+      notes: line.importedTransactionId !== undefined ? `Créée depuis import bancaire : ${line.importedTransactionId}` : "Créée depuis une dépense mensuelle",
+    });
+  };
 
   return (
     <div className={clsx("monthly-expense-row", line.status === "ignored" && "opacity-55")}>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="font-semibold text-ink-primary truncate">{line.label}</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="font-semibold text-ink-primary truncate" title={rawBankLabel ?? visibleLabel}>{visibleLabel}</p>
           <StatusBadge status={line.status} />
+          {line.reconciliationStatus !== undefined && <ReconciliationExpenseBadge status={line.reconciliationStatus} />}
+          {isImported && !isReconciled && <span className="badge-soft">Réel importé</span>}
+          {isUnplannedReal && <span className="badge-soft">Non planifié</span>}
+          {isReconciled && <span className="badge-soft">Rapproché</span>}
           {line.isMandatory && <span className="badge-soft">Obligatoire</span>}
           {line.isFixed && <span className="badge-soft">Fixe</span>}
+          {line.isRecurringProtected && <span className="badge-soft">Récurrence protégée</span>}
         </div>
         <p className="text-xs text-ink-muted mt-0.5">
-          {ownerLabel(line.owner, personName, partnerName)} · {line.sourceExpenseId ? "récurrente proposée" : "ajout du mois"}
+          {ownerLabel(line.owner, personName, partnerName)} · {line.sourceExpenseId ? "récurrente proposée" : isImported ? "réel importé" : "ajout du mois"}
           {line.creditLender && ` · ${line.creditLender}`}
+          {line.importSource && ` · ${line.importSource}`}
         </p>
         {line.creditRemainingMonths !== undefined && (
           <div className="flex items-center gap-2 mt-1">
@@ -1310,13 +1343,23 @@ function MonthlyExpenseRow({ line, store, personName, partnerName }: { line: Mon
           </div>
         )}
         {line.plannedAmount !== undefined && line.realAmount !== undefined && (
-          <p className="text-[11px] font-semibold mt-1" style={{ color: line.amount > line.plannedAmount ? "var(--fin-amber)" : "var(--fin-green)" }}>
-            Prévu : {formatEur(line.plannedAmount)} · Réel : {formatEur(line.realAmount)} · Écart : {line.amount - line.plannedAmount >= 0 ? "+" : ""}{formatEur(line.amount - line.plannedAmount)}
+          <p className="text-[11px] font-semibold mt-1" style={{ color: line.realAmount > line.plannedAmount ? "var(--fin-amber)" : "var(--fin-green)" }}>
+            Prévu : {formatEur(line.plannedAmount)} · Réel : {formatEur(line.realAmount)} · Écart : {line.realAmount - line.plannedAmount >= 0 ? "+" : ""}{formatEur(line.realAmount - line.plannedAmount)}
           </p>
+        )}
+        {rawBankLabel !== undefined && (
+          <details className="mt-1">
+            <summary className="cursor-pointer text-[11px] font-semibold" style={{ color: "var(--text-muted)" }}>
+              Voir le libellé bancaire original
+            </summary>
+            <p className="text-[11px] mt-1 break-all" style={{ color: "var(--text-placeholder)" }}>
+              {rawBankLabel}
+            </p>
+          </details>
         )}
       </div>
       <input
-        aria-label={`Montant ${line.label}`}
+        aria-label={`Montant ${visibleLabel}`}
         className="expense-amount-input"
         type="number"
         value={line.realAmount ?? line.amount}
@@ -1331,16 +1374,38 @@ function MonthlyExpenseRow({ line, store, personName, partnerName }: { line: Mon
           <button className="btn-mini-green" onClick={() => store.validateMonthlyExpense(line.id)}>Valider</button>
         )}
         {(line.status === "pending" || line.status === "added") && !isClosed && (
-          <button className="btn-mini" onClick={() => store.ignoreMonthlyExpense(line.id)}>Ignorer</button>
+          <button className="btn-mini" onClick={() => store.ignoreMonthlyExpense(line.id)} title="Exclure du budget sans supprimer l’historique">Ignorer</button>
         )}
         {line.status === "ignored" && !isClosed && (
           <button className="btn-mini" onClick={() => store.restoreMonthlyExpense(line.id)}>Restaurer</button>
         )}
-        {isEditable && (
-          <button className="icon-btn" onClick={() => store.updateMonthlyExpense(line.id, { status: "ignored" })} title="Retirer du mois">×</button>
+        {canConvertToRecurring && (
+          <button className="btn-mini" onClick={handleMakeRecurring} title="Créer une charge fixe mensuelle depuis cette ligne">Récurrente</button>
+        )}
+        {!isClosed && (
+          <button className="icon-btn" onClick={handleDelete} title="Supprimer définitivement cette ligne">×</button>
         )}
       </div>
     </div>
+  );
+}
+
+function ReconciliationExpenseBadge({ status }: { status: NonNullable<MonthlyExpenseLine["reconciliationStatus"]> }) {
+  const labels: Record<NonNullable<MonthlyExpenseLine["reconciliationStatus"]>, string> = {
+    manual: "Prévu",
+    real: "Réel",
+    reconciled: "Rapproché",
+    ignored: "Ignoré",
+    possible_duplicate: "Doublon possible",
+  };
+  const tone = status === "reconciled" ? "green" : status === "possible_duplicate" ? "amber" : status === "ignored" ? "muted" : "neutral";
+  const bgColor = tone === "green" ? "var(--fin-green-bg)" : tone === "amber" ? "var(--fin-amber-bg)" : "var(--bg-surface-2)";
+  const textColor = tone === "green" ? "var(--fin-green)" : tone === "amber" ? "var(--fin-amber)" : "var(--text-muted)";
+  const borderColor = tone === "green" ? "var(--fin-green-border)" : tone === "amber" ? "var(--fin-amber-border)" : "var(--border)";
+  return (
+    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: bgColor, color: textColor, border: `1px solid ${borderColor}` }}>
+      {labels[status]}
+    </span>
   );
 }
 

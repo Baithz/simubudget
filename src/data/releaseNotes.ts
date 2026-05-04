@@ -6,9 +6,31 @@
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-05-03 | KREMER Régis | Création — patchnote utilisateur v2.5.0 pour auto-update
+//   2026-05-04 | KREMER Régis | Ajout patchnote utilisateur v2.5.1 consolidée
 // =============================================================================
 
 export const FALLBACK_RELEASE_NOTES_BY_VERSION: Record<string, string> = {
+  "2.5.1": `🚀 SimuBudget 2.5.1 — Mise à jour de stabilisation premium
+
+✨ Nouveautés majeures
+• Assistant financier intelligent avec réponses chiffrées à partir de vos données
+• Import bancaire multi-formats avec rapprochement prévu / réel
+• Objectifs de vie avec projection réelle
+• Simulations avancées : perte d'emploi, inflation, imprévus
+
+📊 Améliorations
+• Lecture instantanée de votre situation
+• Score expliqué avec tendances
+• Guide utilisateur interactif
+• Interface plus fluide, plus claire et plus cohérente
+
+🛡️ Correctifs
+• Confirmation avant suppression de profil
+• Paramètres plus sûrs
+• Stabilité générale améliorée
+
+👉 Objectif : vous aider à comprendre votre argent et prendre de meilleures décisions.`,
+
   "2.5.0": `🚀 SimuBudget 2.5.0 — Votre copilote financier
 
 ✨ Nouveautés majeures

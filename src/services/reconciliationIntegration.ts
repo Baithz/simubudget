@@ -6,12 +6,17 @@
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-05-03 | KREMER Régis | Création Phase 15.4 — intégration import bancaire
+//   2026-05-04 | KREMER Régis | Phase 1 — intégration limitée aux rapprochements explicitement validés
+//   2026-05-04 | KREMER Régis | Phase 2 — anti-doublons stricts et protection charges fixes
+//   2026-05-04 | KREMER Régis | Phase 3 — intégration des libellés bancaires humains
 // =============================================================================
 
 import { useAccountingStore } from "@/store/accountingStore";
 import { useReconciliationStore } from "@/store/reconciliationStore";
 import type { MonthlyExpenseLine } from "@/types/accounting";
 import type { ImportedTransaction, ManualSide, ReconciliationPair } from "@/types/reconciliation";
+import { normalizeLabel } from "@/store/reconciliationStore";
+import { getHumanBankLabel } from "@/services/bankLabelDisplay";
 
 export interface ReconciliationIntegrationResult {
   month: string;
@@ -48,6 +53,75 @@ function monthlyLineExists(id: string): boolean {
   return useAccountingStore.getState().monthlyExpenses.some((line) => line.id === id);
 }
 
+function sameCentAmount(a: number, b: number): boolean {
+  return Math.round(Math.abs(a) * 100) === Math.round(Math.abs(b) * 100);
+}
+
+function lineLooksLikeImportedTransaction(line: MonthlyExpenseLine, tx: ImportedTransaction): boolean {
+  if (line.month !== tx.month) return false;
+  if (line.status === "ignored") return false;
+  if (line.importedTransactionId === tx.id || line.matchedTransactionId === tx.id) return true;
+  if (line.notes?.includes(`${IMPORT_NOTE_PREFIX}:${tx.id}`) === true) return true;
+
+  const amountToCompare = line.realAmount ?? line.amount;
+  if (!sameCentAmount(amountToCompare, Math.abs(tx.amountEur))) return false;
+
+  const normalizedLineLabel = normalizeLabel(`${line.label} ${line.displayLabel ?? ""} ${line.rawBankLabel ?? ""}`);
+  const normalizedBankLabel = normalizeLabel(`${tx.labelDisplay ?? ""} ${tx.labelRaw} ${tx.labelNormalized}`);
+  if (normalizedLineLabel.length === 0 || normalizedBankLabel.length === 0) return false;
+
+  if (normalizedLineLabel === normalizedBankLabel) return true;
+  if (normalizedBankLabel.includes(normalizedLineLabel) || normalizedLineLabel.includes(normalizedBankLabel)) return true;
+
+  const lineTokens = new Set(normalizedLineLabel.split(" ").filter((token) => token.length >= 4));
+  const bankTokens = new Set(normalizedBankLabel.split(" ").filter((token) => token.length >= 4));
+  let common = 0;
+  for (const token of lineTokens) {
+    if (bankTokens.has(token)) common += 1;
+  }
+
+  return common >= 2 && line.category === tx.category;
+}
+
+function findExistingImportedLine(tx: ImportedTransaction): MonthlyExpenseLine | null {
+  return useAccountingStore.getState().monthlyExpenses.find((line) => lineLooksLikeImportedTransaction(line, tx)) ?? null;
+}
+
+function isLineAlreadyReconciledWithAnotherTransaction(line: MonthlyExpenseLine, tx: ImportedTransaction): boolean {
+  return line.matchedTransactionId !== undefined && line.matchedTransactionId !== tx.id;
+}
+
+function buildProtectedReconciledPatch(
+  targetLine: MonthlyExpenseLine,
+  tx: ImportedTransaction,
+  importedAt: string,
+): Partial<Omit<MonthlyExpenseLine, "id" | "month">> {
+  const humanLabel = tx.labelDisplay ?? getHumanBankLabel(tx.labelRaw, tx.category).displayLabel;
+  const plannedReferenceAmount = targetLine.plannedReferenceAmount
+    ?? targetLine.plannedAmount
+    ?? targetLine.amount;
+  const realAmount = Math.abs(tx.amountEur);
+  const isRecurringProtected = targetLine.isFixed || targetLine.isMandatory || targetLine.sourceExpenseId !== undefined;
+
+  return {
+    amount: realAmount,
+    realAmount,
+    plannedReferenceAmount,
+    reconciliationDelta: realAmount - plannedReferenceAmount,
+    reconciliationStatus: "reconciled",
+    matchedTransactionId: tx.id,
+    status: "validated",
+    importedTransactionId: tx.id,
+    importedAt,
+    importSource: tx.source,
+    rawBankLabel: tx.labelRaw,
+    importedRawLabel: tx.labelRaw,
+    displayLabel: targetLine.label,
+    notes: mergeNotes(mergeNotes(targetLine.notes, buildImportNote(tx)), `Libellé bancaire affiché : ${humanLabel}`),
+    isRecurringProtected,
+  };
+}
+
 function findTransaction(id: string): ImportedTransaction | null {
   return useReconciliationStore.getState().transactions.find((tx) => tx.id === id) ?? null;
 }
@@ -55,14 +129,22 @@ function findTransaction(id: string): ImportedTransaction | null {
 function buildManualSides(month: string): ManualSide[] {
   return useAccountingStore.getState()
     .getMonthExpenses(month)
-    .filter((line) => line.amount > 0 && line.status !== "ignored")
+    .filter((line) =>
+      line.amount > 0
+      && line.status !== "ignored"
+      && line.importedTransactionId === undefined
+      && line.reconciliationStatus !== "real"
+    )
     .map((line) => ({
       expenseId: line.id,
       label: line.label,
       category: line.category,
-      amount: line.plannedAmount ?? line.amount,
+      amount: line.plannedReferenceAmount ?? line.plannedAmount ?? line.amount,
       date: `${month}-15`,
-      reconciliationStatus: "manual" as const,
+      reconciliationStatus: line.reconciliationStatus === "reconciled" ? "reconciled" as const : "manual" as const,
+      isFixed: line.isFixed,
+      isMandatory: line.isMandatory,
+      ...(line.notes !== undefined ? { notes: line.notes } : {}),
     }));
 }
 
@@ -74,13 +156,18 @@ function shouldSkipPair(pair: ReconciliationPair, tx: ImportedTransaction): "ign
 }
 
 function baseImportedLine(tx: ImportedTransaction, id: string, importedAt: string): Omit<MonthlyExpenseLine, "status"> & { status?: MonthlyExpenseLine["status"] } {
+  const humanLabel = tx.labelDisplay ?? getHumanBankLabel(tx.labelRaw, tx.category).displayLabel;
   return {
     id,
     month: tx.month,
-    label: tx.labelRaw.trim().length > 0 ? tx.labelRaw.trim() : "Transaction bancaire importée",
+    label: humanLabel,
+    displayLabel: humanLabel,
     category: tx.category,
     amount: Math.abs(tx.amountEur),
     realAmount: Math.abs(tx.amountEur),
+    plannedReferenceAmount: 0,
+    reconciliationDelta: Math.abs(tx.amountEur),
+    reconciliationStatus: "real",
     isFixed: false,
     isMandatory: false,
     owner: "me",
@@ -89,6 +176,8 @@ function baseImportedLine(tx: ImportedTransaction, id: string, importedAt: strin
     importedTransactionId: tx.id,
     importedAt,
     importSource: tx.source,
+    rawBankLabel: tx.labelRaw,
+    importedRawLabel: tx.labelRaw,
   };
 }
 
@@ -138,24 +227,31 @@ export function integrateReconciliationMonth(month: string): ReconciliationInteg
       continue;
     }
 
+    const existingImportedLine = findExistingImportedLine(tx);
+    if (existingImportedLine !== null) {
+      useReconciliationStore.getState().markIntegrated(tx.id, existingImportedLine.id);
+      result.alreadyIntegrated += 1;
+      continue;
+    }
+
     const importedAt = new Date().toISOString();
 
-    if (pair.status === "reconciled" && pair.manual !== null) {
+    if (pair.status === "reconciled" && tx.status === "reconciled" && pair.manual !== null) {
       const targetLine = accounting.monthlyExpenses.find((line) => line.id === pair.manual?.expenseId);
       if (targetLine === undefined) {
         result.errors.push(`Ligne manuelle introuvable : ${pair.manual.expenseId}`);
         continue;
       }
 
-      accounting.updateMonthlyExpense(pair.manual.expenseId, {
-        amount: Math.abs(tx.amountEur),
-        realAmount: Math.abs(tx.amountEur),
-        status: "validated",
-        notes: mergeNotes(targetLine.notes, buildImportNote(tx)),
-        importedTransactionId: tx.id,
-        importedAt,
-        importSource: tx.source,
-      });
+      if (isLineAlreadyReconciledWithAnotherTransaction(targetLine, tx)) {
+        result.skippedDuplicates += 1;
+        continue;
+      }
+
+      accounting.updateMonthlyExpense(
+        pair.manual.expenseId,
+        buildProtectedReconciledPatch(targetLine, tx, importedAt),
+      );
       useReconciliationStore.getState().markIntegrated(tx.id, pair.manual.expenseId);
       result.updatedManualLines += 1;
       continue;
@@ -163,8 +259,9 @@ export function integrateReconciliationMonth(month: string): ReconciliationInteg
 
     if (pair.status === "imported_only") {
       const id = importedMonthlyExpenseId(tx.id);
-      if (monthlyLineExists(id)) {
-        useReconciliationStore.getState().markIntegrated(tx.id, id);
+      const duplicateLine = findExistingImportedLine(tx);
+      if (monthlyLineExists(id) || duplicateLine !== null) {
+        useReconciliationStore.getState().markIntegrated(tx.id, duplicateLine?.id ?? id);
         result.alreadyIntegrated += 1;
         continue;
       }
@@ -190,9 +287,12 @@ export function getReconciliationIntegrationState(month: string): { totalIntegra
     if (tx === null) continue;
     const skip = shouldSkipPair(pair, tx);
     if (skip !== null) continue;
+    if (pair.status === "reconciled" && tx.status !== "reconciled") continue;
     if (pair.status !== "reconciled" && pair.status !== "imported_only") continue;
     totalIntegrable += 1;
     if (tx.integratedMonthlyExpenseId !== undefined && monthlyLineExists(tx.integratedMonthlyExpenseId)) {
+      alreadyIntegrated += 1;
+    } else if (findExistingImportedLine(tx) !== null) {
       alreadyIntegrated += 1;
     }
   }

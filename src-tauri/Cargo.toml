@@ -1,6 +1,6 @@
 [package]
 name    = "simubudget"
-version = "2.5.0"
+version = "2.5.1"
 edition = "2021"
 authors = ["KREMER Regis"]
 description = "SimuBudget - Copilote financier personnel"

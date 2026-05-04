@@ -6,6 +6,8 @@
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-05-03 | KREMER Régis | Création Phase 15.1 — rapprochement import bancaire
+//   2026-05-04 | KREMER Régis | Phase 1 — suggestions de rapprochement non destructives
+//   2026-05-04 | KREMER Régis | Phase 3 — affichage des libellés bancaires humains
 // =============================================================================
 
 import { useMemo, useState } from "react";
@@ -23,6 +25,7 @@ import type { ExpenseCategory } from "@/types/accounting";
 
 const STATUS_LABELS: Record<ReconciliationPair["status"], string> = {
   reconciled:         "Rapproché",
+  suggested_match:    "Rapprochement proposé",
   manual_only:        "Prévu sans réel",
   imported_only:      "Non planifié",
   possible_duplicate: "Doublon possible",
@@ -30,6 +33,7 @@ const STATUS_LABELS: Record<ReconciliationPair["status"], string> = {
 
 const STATUS_COLORS: Record<ReconciliationPair["status"], { bg: string; border: string; text: string }> = {
   reconciled:         { bg: "var(--fin-green-bg)",  border: "var(--fin-green-border)",  text: "var(--fin-green)"  },
+  suggested_match:    { bg: "var(--fin-blue-bg)",   border: "var(--fin-blue-border)",   text: "var(--fin-blue)"   },
   manual_only:        { bg: "var(--fin-blue-bg)",   border: "var(--fin-blue-border)",   text: "var(--fin-blue)"   },
   imported_only:      { bg: "var(--fin-amber-bg)",  border: "var(--fin-amber-border)",  text: "var(--fin-amber)"  },
   possible_duplicate: { bg: "var(--fin-red-bg)",    border: "var(--fin-red-border)",    text: "var(--fin-red)"    },
@@ -129,6 +133,9 @@ function SummaryBar({ month }: { month: string }) {
         amount:               e.plannedAmount ?? e.amount,
         date:                 `${month}-15`,   // date approximative pour matching
         reconciliationStatus: "manual" as const,
+        isFixed:              e.isFixed,
+        isMandatory:          e.isMandatory,
+        ...(e.notes !== undefined ? { notes: e.notes } : {}),
       })),
   [monthlyExpenses, month]);
 
@@ -211,6 +218,9 @@ function EnvelopeSummary({ month }: { month: string }) {
         amount:               e.plannedAmount ?? e.amount,
         date:                 `${month}-15`,
         reconciliationStatus: "manual" as const,
+        isFixed:              e.isFixed,
+        isMandatory:          e.isMandatory,
+        ...(e.notes !== undefined ? { notes: e.notes } : {}),
       })),
   [monthlyExpenses, month]);
 
@@ -284,7 +294,7 @@ function EnvelopeSummary({ month }: { month: string }) {
 
 // ─── Carte de paire de rapprochement ─────────────────────────────────────────
 
-function PairCard({ pair }: { pair: ReconciliationPair }) {
+function PairCard({ pair, manualOptions }: { pair: ReconciliationPair; manualOptions: ManualSide[] }) {
   const reconcileManual  = useReconciliationStore((s) => s.reconcileManual);
   const unreconcile      = useReconciliationStore((s) => s.unreconcile);
   const ignoreTransaction = useReconciliationStore((s) => s.ignoreTransaction);
@@ -293,10 +303,13 @@ function PairCard({ pair }: { pair: ReconciliationPair }) {
 
   const cfg = STATUS_COLORS[pair.status];
   const [showCatPicker, setShowCatPicker] = useState(false);
+  const [selectedManualId, setSelectedManualId] = useState<string>(manualOptions[0]?.expenseId ?? "");
 
   function handleReconcile() {
-    if (pair.imported && pair.manual) {
-      reconcileManual(pair.imported.transactionId, pair.manual.expenseId);
+    if (!pair.imported) return;
+    const manualId = pair.manual?.expenseId ?? selectedManualId;
+    if (manualId.trim().length > 0) {
+      reconcileManual(pair.imported.transactionId, manualId);
     }
   }
 
@@ -336,6 +349,11 @@ function PairCard({ pair }: { pair: ReconciliationPair }) {
         <span className="text-2xs font-bold uppercase tracking-wider" style={{ color: cfg.text }}>
           {STATUS_LABELS[pair.status]}
         </span>
+        {pair.score !== undefined && pair.status !== "reconciled" && (
+          <span className="rounded-full px-1.5 py-0.5 font-mono text-2xs" style={{ background: "var(--bg-surface)", color: cfg.text }}>
+            {Math.round(pair.score * 100)}%
+          </span>
+        )}
         {pair.delta !== undefined && Math.abs(pair.delta) > 0.01 && (
           <span className="ml-auto font-mono text-xs font-bold" style={{ color: pair.delta > 0 ? "var(--fin-red)" : "var(--fin-green)" }}>
             {pair.delta > 0 ? "+" : ""}{formatEur(pair.delta)}
@@ -385,12 +403,17 @@ function PairCard({ pair }: { pair: ReconciliationPair }) {
               <div className="flex items-start gap-2">
                 <CategoryDot category={pair.imported.category} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                    {pair.imported.labelRaw}
+                  <p className="truncate text-sm font-medium" style={{ color: "var(--text-primary)" }} title={pair.imported.labelRaw}>
+                    {pair.imported.labelDisplay ?? pair.imported.labelRaw}
                   </p>
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                     {formatDate(pair.imported.date)} · {CATEGORY_LABELS[pair.imported.category]}
                   </p>
+                  {pair.imported.labelDisplay !== undefined && pair.imported.labelDisplay !== pair.imported.labelRaw && (
+                    <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--text-placeholder)" }} title={pair.imported.labelRaw}>
+                      Original : {pair.imported.labelRaw}
+                    </p>
+                  )}
                 </div>
               </div>
               <p className="mt-1 font-mono text-base font-bold" style={{ color: "var(--text-primary)" }}>
@@ -405,13 +428,19 @@ function PairCard({ pair }: { pair: ReconciliationPair }) {
         </div>
       </div>
 
+      {pair.reason !== undefined && (
+        <div className="px-3 py-2 text-xs" style={{ color: "var(--text-secondary)", borderTop: `1px solid ${cfg.border}` }}>
+          Signal : {pair.reason}
+        </div>
+      )}
+
       {/* Actions */}
       {pair.imported && pair.status !== "reconciled" && (
         <div
           className="flex flex-wrap items-center gap-2 px-3 py-2"
           style={{ borderTop: `1px solid ${cfg.border}` }}
         >
-          {pair.manual && (
+          {pair.manual ? (
             <button
               type="button"
               onClick={handleReconcile}
@@ -422,7 +451,30 @@ function PairCard({ pair }: { pair: ReconciliationPair }) {
               </svg>
               Rapprocher ✓
             </button>
-          )}
+          ) : manualOptions.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="rounded-lg px-2 py-1 text-xs font-semibold"
+                value={selectedManualId}
+                onChange={(event) => setSelectedManualId(event.target.value)}
+                style={{ background: "var(--bg-surface)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              >
+                {manualOptions.map((manual) => (
+                  <option key={manual.expenseId} value={manual.expenseId}>
+                    {manual.label} — {formatEur(manual.amount)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleReconcile}
+                className="btn-mini-green"
+                disabled={selectedManualId.trim().length === 0}
+              >
+                Rapprocher manuellement
+              </button>
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={() => setShowCatPicker((v) => !v)}
@@ -508,11 +560,12 @@ function PairCard({ pair }: { pair: ReconciliationPair }) {
 
 // ─── Panel principal ──────────────────────────────────────────────────────────
 
-type FilterTab = "all" | "reconciled" | "unmatched" | "manual_only" | "possible_duplicate";
+type FilterTab = "all" | "reconciled" | "suggested_match" | "unmatched" | "manual_only" | "possible_duplicate";
 
 const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: "all",                label: "Tout"            },
   { key: "reconciled",         label: "Rapprochés"      },
+  { key: "suggested_match",    label: "Proposés"        },
   { key: "unmatched",          label: "Non planifiés"   },
   { key: "manual_only",        label: "Sans réel"       },
   { key: "possible_duplicate", label: "Doublons"        },
@@ -538,6 +591,9 @@ export function ReconciliationPanel({ month }: Props) {
         amount:               e.plannedAmount ?? e.amount,
         date:                 `${month}-15`,
         reconciliationStatus: "manual" as const,
+        isFixed:              e.isFixed,
+        isMandatory:          e.isMandatory,
+        ...(e.notes !== undefined ? { notes: e.notes } : {}),
       })),
   [monthlyExpenses, month]);
 
@@ -555,6 +611,7 @@ export function ReconciliationPanel({ month }: Props) {
   const counts = useMemo(() => ({
     all:                allPairs.length,
     reconciled:         allPairs.filter((p) => p.status === "reconciled").length,
+    suggested_match:    allPairs.filter((p) => p.status === "suggested_match").length,
     unmatched:          allPairs.filter((p) => p.status === "imported_only").length,
     manual_only:        allPairs.filter((p) => p.status === "manual_only").length,
     possible_duplicate: allPairs.filter((p) => p.status === "possible_duplicate").length,
@@ -631,6 +688,7 @@ export function ReconciliationPanel({ month }: Props) {
                 `pair-${idx}`
               }
               pair={pair}
+              manualOptions={manualExpenses}
             />
           ))}
         </AnimatePresence>

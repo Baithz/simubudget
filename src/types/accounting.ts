@@ -15,6 +15,7 @@
 //   2026-05-01 | KREMER Régis | ZIP 5 — Intelligence financière avancée : scoring et priorité des recommandations
 //   2026-05-01 | KREMER Régis | Phase 13 — méthode des enveloppes budgétaires
 //   2026-05-01 | KREMER Régis | Phase 13C.3 — création et gestion explicite des enveloppes
+//   2026-05-04 | KREMER Régis | Phase 3 — stabilisation displayLabel/importedRawLabel pour libellés humains
 // =============================================================================
 
 import type { CreditType } from "./profile";
@@ -133,6 +134,15 @@ export interface MonthlyExpenseLine {
   importedTransactionId?: string;   // ID transaction bancaire source
   importedAt?:            string;   // Date ISO d'intégration dans Mes Comptes
   importSource?:          string;   // Banque/source du relevé importé
+  // Phase 2 — rapprochement et protection charges fixes
+  reconciliationStatus?:  "manual" | "real" | "reconciled" | "ignored" | "possible_duplicate";
+  matchedTransactionId?:  string;   // ID transaction rapprochée avec la ligne prévue
+  plannedReferenceAmount?: number;  // Montant prévu initial conservé pour analyse d'écart
+  reconciliationDelta?:   number;   // realAmount - plannedReferenceAmount
+  rawBankLabel?:          string;   // Libellé bancaire brut conservé pour audit
+  importedRawLabel?:      string;   // Alias UI Phase 2 : libellé bancaire original affichable
+  displayLabel?:          string;   // Libellé humain affiché dans Mes Comptes
+  isRecurringProtected?:  boolean;  // true si charge fixe/obligatoire : ne pas modifier la récurrence
 }
 
 export type IncomeType =

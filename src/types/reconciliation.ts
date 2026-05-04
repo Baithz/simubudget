@@ -5,6 +5,9 @@
 // -----------------------------------------------------------------------------
 // Changelog :
 //   2026-05-03 | KREMER Régis | Création Phase 15.1 — import CSV et rapprochement
+//   2026-05-04 | KREMER Régis | Phase 1 — enrichissement paires suggérées et champs manuels
+//   2026-05-04 | KREMER Régis | Phase 2 — champs anti-doublons import bancaire
+//   2026-05-04 | KREMER Régis | Phase 3 — libellés bancaires humains
 // =============================================================================
 
 import type { ExpenseCategory } from "./accounting";
@@ -44,6 +47,12 @@ export interface ImportedTransaction {
   // Phase 15.4 — si intégrée dans Mes Comptes
   integratedMonthlyExpenseId?: string; // ID de ligne MonthlyExpenseLine créée ou mise à jour
   integratedAt?:               string; // ISO datetime de l'intégration
+  // Phase 2 — anti-doublons
+  duplicateOfTransactionId?:   string; // ID de la transaction importée suspectée identique
+  duplicateReason?:            string; // Explication courte du doublon suspecté
+  // Phase 3 — libellé bancaire humain
+  labelDisplay?:               string; // Libellé humain affiché dans l'UI
+  merchantLabel?:              string; // Enseigne ou créancier détecté
 }
 
 // ─── Règle de catégorisation apprise localement ──────────────────────────────
@@ -103,8 +112,10 @@ export interface ReconciliationSummary {
 export interface ReconciliationPair {
   manual:   ManualSide | null;
   imported: ImportedSide | null;
-  status:   "reconciled" | "manual_only" | "imported_only" | "possible_duplicate";
-  delta?:   number;   // imported.amount - manual.amount (si les deux existent)
+  status:   "reconciled" | "suggested_match" | "manual_only" | "imported_only" | "possible_duplicate";
+  delta?:   number | undefined;   // imported.amount - manual.amount (si les deux existent)
+  score?:   number | undefined;   // score de rapprochement 0.0 → 1.0
+  reason?:  string | undefined;   // explication courte du matching
 }
 
 export interface ManualSide {
@@ -114,15 +125,21 @@ export interface ManualSide {
   amount:     number;    // En € positif
   date:       string;    // "YYYY-MM-DD"
   reconciliationStatus: ManualExpenseReconciliationStatus;
+  isFixed?:   boolean | undefined;
+  isMandatory?: boolean | undefined;
+  notes?:     string | undefined;
 }
 
 export interface ImportedSide {
   transactionId: string;
   labelRaw:      string;
+  labelDisplay?: string | undefined;
+  merchantLabel?: string | undefined;
   category:      ExpenseCategory;
   amount:        number;   // En € positif (abs)
   date:          string;   // "YYYY-MM-DD"
   status:        ReconciliationStatus;
+  score?:        number | undefined;
 }
 
 // ─── Input brut envoyé à Rust pour normalisation ─────────────────────────────

@@ -20,6 +20,7 @@
 //   2026-05-02 | KREMER Régis | Correction Phase 14.1 — lancement sans profil exemple et scroll du conteneur principal
 //   2026-05-03 | KREMER Régis | Phase 17 — bouton global de simulation instantanée
 //   2026-05-03 | KREMER Régis | Phase 18.1 — panneau assistant flottant premium
+//   2026-05-04 | KREMER Régis | Release v2.5.1 — affichage version réelle dans la sidebar
 // =============================================================================
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -33,6 +34,7 @@ import { useProfileListStore } from "@/store/profileListStore";
 import { useSimulationStore } from "@/store/simulationStore";
 import { useProfile } from "@/hooks/useProfile";
 import { useUpdater } from "@/hooks/useUpdater";
+import { useAppVersion } from "@/hooks/useAppVersion";
 import { UpdateModal } from "@/components/shared/UpdateModal";
 import { AffordabilityModal } from "@/components/shared/AffordabilityModal";
 import { AssistantFloatingPanel } from "@/components/Assistant/AssistantFloatingPanel";
@@ -169,6 +171,7 @@ export default function App() {
   const [affordabilityOpen, setAffordabilityOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const mainRef = useRef<HTMLElement | null>(null);
+  const appVersion = useAppVersion();
 
   // ── Mise à jour automatique au démarrage (checkOnMount = true) ────────────
   const { status: updateStatus, updateInfo, progress: updateProgress, error: updateError, installUpdate, dismiss } = useUpdater(true);
@@ -410,7 +413,7 @@ export default function App() {
           </NavLink>
           {!collapsed && (
             <p className="px-2 pt-1 text-[10px] font-semibold" style={{ color: "var(--text-placeholder)" }}>
-              v2.5.0
+              v{appVersion}
             </p>
           )}
         </div>

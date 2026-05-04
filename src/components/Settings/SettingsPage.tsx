@@ -13,6 +13,7 @@
 //   2026-05-01 | KREMER Régis | ZIP 7.1 — édition PIN avec pavé premium
 //   2026-05-01 | KREMER Régis | Phase 13 — section Mises à jour avec check manuel et barre de progression
 //   2026-05-03 | KREMER Régis | Refonte UX Paramètres — confirmation destructive et notifications utilisateur
+//   2026-05-04 | KREMER Régis | Release v2.5.1 — affichage version réelle dans paramètres et exports
 // =============================================================================
 
 import { useEffect, useRef, useState } from "react";
@@ -27,11 +28,11 @@ import {
   useProfileListStore,
 } from "@/store/profileListStore";
 import { useUpdater } from "@/hooks/useUpdater";
+import { useAppVersion } from "@/hooks/useAppVersion";
 import logoFull from "@/assets/logo-full.png";
 import PinSetupModal from "@/components/ProfileSelector/PinSetupModal";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
-const APP_VERSION = "2.5.0";
 const PROFILE_SESSION_KEY = "simubudget-profile-session-active";
 const RESET_DONE_SESSION_KEY = "simubudget-settings-reset-done";
 const RESET_CONFIRM_TEXT = "EFFACER";
@@ -67,6 +68,7 @@ const START_OPTIONS: Option<StartPageMode>[] = [
 
 // ─── UpdatePanel ──────────────────────────────────────────────────────────────
 function UpdatePanel() {
+  const appVersion = useAppVersion();
   const { status, updateInfo, progress, error, checkUpdate, installUpdate, dismiss } = useUpdater();
 
   const statusLabel: Record<typeof status, string> = {
@@ -101,7 +103,7 @@ function UpdatePanel() {
           <p className="mt-0.5 text-sm font-medium" style={{ color: "var(--text-muted)" }}>
             Version installée :{" "}
             <span className="font-mono font-bold" style={{ color: "var(--text-secondary)" }}>
-              v{APP_VERSION}
+              v{appVersion}
             </span>
           </p>
         </div>
@@ -250,6 +252,7 @@ export function SettingsPage() {
   const removeProfileEntry = useProfileListStore((state) => state.removeProfile);
   const clearActiveProfile = useProfileListStore((state) => state.clearActive);
   const activeEntry = profiles.find((e) => e.id === activeProfileId) ?? null;
+  const appVersion = useAppVersion();
 
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [resetModalOpen, setResetModalOpen] = useState(false);
@@ -276,7 +279,7 @@ export function SettingsPage() {
 
   const exportProfile = () => {
     const payload = JSON.stringify(
-      { version: APP_VERSION, exportedAt: new Date().toISOString(), profile },
+      { version: appVersion, exportedAt: new Date().toISOString(), profile },
       null,
       2
     );
@@ -284,7 +287,7 @@ export function SettingsPage() {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
-    a.download = `simubudget-profil-v${APP_VERSION}.json`;
+    a.download = `simubudget-profil-v${appVersion}.json`;
     a.click();
     URL.revokeObjectURL(url);
     showToast({ type: "success", title: "Export lancé", detail: "Le profil JSON a été généré." });
@@ -394,7 +397,7 @@ export function SettingsPage() {
           activeName={activeEntry?.displayName ?? "Aucun profil actif"}
           hasPin={Boolean(activeEntry?.pinHash)}
           notifications={notifications}
-          version={APP_VERSION}
+          version={appVersion}
         />
 
         <div className="grid gap-6 xl:grid-cols-[1fr_0.92fr]">
@@ -438,7 +441,7 @@ export function SettingsPage() {
               </SettingRow>
               <SettingRow title="Version" description="Build desktop Windows actuel.">
                 <span className="font-mono text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                  SimuBudget v{APP_VERSION}
+                  SimuBudget v{appVersion}
                 </span>
               </SettingRow>
             </SettingsCard>
@@ -533,7 +536,7 @@ export function SettingsPage() {
                     Vois ta vie financière avant de la vivre.
                   </p>
                   <p className="mt-2 text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
-                    SimuBudget v{APP_VERSION} · by Baithz
+                    SimuBudget v{appVersion} · by Baithz
                   </p>
                   <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
                     Application locale Windows — données stockées sur votre machine.
